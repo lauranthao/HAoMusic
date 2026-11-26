@@ -1,37 +1,49 @@
 import SwiftUI
 
-/// 入口：无启动动画，直接进主界面（chen 2026-11-26 决定：三个应用都不要启动动画）。
-/// 设置 → 网络曲库门面 → 播放器（带解析器）的依赖链在这里组装。
+// HAo Music iOS entry point (adapted from Kumone's ios/KumoneIOS/KumoneIOSApp.swift).
+// No launch animation: WindowGroup opens straight onto IOSMainWindow.
 @main
 struct HAoMusicApp: App {
-    @StateObject private var settings: MusicSettings
-    @StateObject private var musicService: HaoMusicService
-    @StateObject private var loginManager: LoginSessionManager
-    @StateObject private var playerService: PlayerService
-    @StateObject private var libraryStore = LibraryStore()
-
-    init() {
-        let settings = MusicSettings()
-        let loginManager = LoginSessionManager()
-        let service = HaoMusicService(settings: settings, loginManager: loginManager)
-        _settings = StateObject(wrappedValue: settings)
-        _loginManager = StateObject(wrappedValue: loginManager)
-        _musicService = StateObject(wrappedValue: service)
-        _playerService = StateObject(wrappedValue: PlayerService(resolver: service.resolver))
-    }
-
+    @UIApplicationDelegateAdaptor(DownloadAppDelegate.self) private var downloadDelegate
     var body: some Scene {
         WindowGroup {
-            RootTabView()
-                .environmentObject(settings)
-                .environmentObject(loginManager)
-                .environmentObject(musicService)
-                .environmentObject(playerService)
-                .environmentObject(libraryStore)
-                .task {
-                    // 启动恢复登录态（网易走服务端校验，QQ 走结构检查；失败不断登录）。
-                    await loginManager.restore()
-                }
+            IOSMainWindow()
         }
+    }
+}
+
+final class DownloadAppDelegate: NSObject, UIApplicationDelegate {
+    func application(_ application: UIApplication, handleEventsForBackgroundURLSession identifier: String,
+                     completionHandler: @escaping () -> Void) {
+        OfflineDownloadEvents.handleBackgroundSession(identifier: identifier, completion: completionHandler)
+    }
+}
+
+// MARK: - CarPlay
+
+import CarPlay
+import UIKit
+
+/// CarPlay template scene delegate — instantiated automatically by UIApplicationSceneManifest in Info.plist.
+/// It just forwards the connect/disconnect callbacks into `CarPlayConnector` inside the app;
+/// the app target itself stays as a thin bridge and owns no CarPlay logic of its own.
+final class CarPlaySceneDelegate: UIResponder, CPTemplateApplicationSceneDelegate {}
+
+extension CarPlaySceneDelegate {
+    func templateApplicationScene(
+        _ scene: CPTemplateApplicationScene,
+        didConnect interfaceController: CPInterfaceController
+    ) {
+        CarPlayConnector.shared.didConnect(
+            interfaceController: interfaceController,
+            window: scene.carWindow
+        )
+    }
+
+    func templateApplicationScene(
+        _ scene: CPTemplateApplicationScene,
+        didDisconnect interfaceController: CPInterfaceController
+    ) {
+        CarPlayConnector.shared.didDisconnect()
     }
 }

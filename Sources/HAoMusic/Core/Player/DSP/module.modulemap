@@ -1,0 +1,4 @@
+module KumoneAudioDSP {
+    header "KumoneAudioDSP.h"
+    export *
+}

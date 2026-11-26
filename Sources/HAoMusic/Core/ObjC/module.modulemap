@@ -1,0 +1,4 @@
+module KumoneObjC {
+    header "KumoneObjC.h"
+    export *
+}
