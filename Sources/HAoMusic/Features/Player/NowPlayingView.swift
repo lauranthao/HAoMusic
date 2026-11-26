@@ -196,11 +196,14 @@ struct NowPlayingView: View {
         #endif
         #if os(iOS)
         .onAppear {
-            showLyricsOnMobile = settings.nowPlayingMode == .immersive
+            // chen 2026-11-27: the player opens on the cover, not the
+            // lyrics page — lyrics stay one tap away (top-right toggle,
+            // bottom-row lyrics button, MiniLyrics strip).
+            showLyricsOnMobile = false
             showQueueOnMobile = false
         }
         .onChange(of: settings.nowPlayingMode) { _ in
-            showLyricsOnMobile = settings.nowPlayingMode == .immersive
+            showLyricsOnMobile = false
             showQueueOnMobile = false
         }
         .onChange(of: player.currentTrack?.id) { _ in
@@ -1072,7 +1075,8 @@ struct NowPlayingView: View {
                 showsLyrics: showLyricsOnMobile,
                 showsQueue: showQueueOnMobile,
                 onToggleLyrics: toggleImmersiveLyrics,
-                onToggleQueue: toggleImmersiveQueue
+                onToggleQueue: toggleImmersiveQueue,
+                onOpenSoundEffects: { showSoundEffects = true }
             )
         }
         .padding(.top, 14)
@@ -2304,6 +2308,9 @@ private struct CompactSecondaryControls: View {
     let showsQueue: Bool
     let onToggleLyrics: () -> Void
     let onToggleQueue: () -> Void
+    /// chen 2026-11-27: a direct equalizer button in the bottom row —
+    /// the EQ used to live only inside the "..." menu.
+    let onOpenSoundEffects: () -> Void
 
     var body: some View {
         HStack(spacing: 0) {
@@ -2328,6 +2335,11 @@ private struct CompactSecondaryControls: View {
             // The panel itself is drawn by the page (`volumeLayer`), above
             // everything else, from this button's frame.
             .anchorPreference(key: CompactVolumeButtonAnchorKey.self, value: .bounds) { $0 }
+
+            secondaryButton(
+                icon: "waveform",
+                label: "音效"
+            ) { onOpenSoundEffects() }
 
             secondaryButton(
                 icon: "list.bullet",

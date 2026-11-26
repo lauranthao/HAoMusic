@@ -77,6 +77,14 @@ enum Theme {
         /// and one of subtitle. Shelf titles are single-line on iOS
         /// (`shelfTitleLineLimit`), so the row carries no slack below them.
         static let coverShelfHeight: CGFloat = 206
+        /// Height of the text under a cover card: 8pt gap + 13pt title line
+        /// (~16pt) + 8pt gap + 11pt subtitle line (~14pt). Mirrors
+        /// CoverCardBody's VStack. Shelves whose cards use a fitted size
+        /// (smaller than `cardSize`) must size their rows from
+        /// `size + coverCardTextHeight`, not from `coverShelfHeight` —
+        /// otherwise the shelf reserves ~110pt of empty space on a phone
+        /// (chen 2026-11-27: 新碟上架 below its cards was all blank).
+        static let coverCardTextHeight: CGFloat = 46
         /// Row height for a shelf of artist cards: circular artwork, one name.
         static let artistShelfHeight: CGFloat = 160
         static let shelfTitleLineLimit = 1

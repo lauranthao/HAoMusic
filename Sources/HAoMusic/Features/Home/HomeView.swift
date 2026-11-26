@@ -1,5 +1,13 @@
 import SwiftUI
 
+/// Measured width of the 新碟上架 shelf, reported by its background
+/// GeometryReader so the two-row height can be sized from the fitted card
+/// size (see HomeView.loadedBody).
+private struct NewAlbumsWidthKey: PreferenceKey {
+    static var defaultValue: CGFloat = 0
+    static func reduce(value: inout CGFloat, nextValue: () -> CGFloat) { value = nextValue() }
+}
+
 @MainActor
 final class HomeViewModel: ObservableObject {
     /// Shared so the loaded page survives sidebar switches (no skeleton flash).
@@ -107,6 +115,10 @@ struct HomeView: View {
     @EnvironmentObject private var account: AccountStore
     @EnvironmentObject private var player: PlayerService
     @StateObject private var model = HomeViewModel.shared
+    /// Measured width of the 新碟上架 shelf, for sizing its two rows from
+    /// the fitted card size (see loadedBody). Falls back to the screen
+    /// width until the first measurement lands.
+    @State private var newAlbumsWidth: CGFloat = 0
 
     var body: some View {
         ScrollView {
@@ -198,33 +210,43 @@ struct HomeView: View {
             }
 
             if !model.newAlbums.isEmpty {
+                // Two rows like Coda's new-albums shelf: each column stacks
+                // two album cards, and the columns scroll horizontally. Same
+                // cards, same data, same tap. The rows are sized from the
+                // fitted card size, not from coverShelfHeight (which assumes
+                // 160pt cards): on a phone the cards are ~106pt, so the old
+                // height left ~110pt of blank space under the shelf
+                // (chen 2026-11-27). The width is measured in the
+                // background so the section sizes itself — no GeometryReader
+                // child to pin a height for.
+                let width = newAlbumsWidth > 0 ? newAlbumsWidth : UIScreen.main.bounds.width
+                let size = Theme.Layout.fittedShelfCardSize(availableWidth: width, leadingInset: Theme.Layout.contentInset)
+                let twoRowHeight = (size + Theme.Layout.coverCardTextHeight) * 2 + 16
                 VStack(alignment: .leading, spacing: Theme.Layout.sectionHeaderSpacing) {
                     SectionHeader(title: "新碟上架")
                         .padding(.horizontal, Theme.Layout.contentInset)
-                    GeometryReader { geometry in
-                        let size = Theme.Layout.fittedShelfCardSize(availableWidth: geometry.size.width, leadingInset: Theme.Layout.contentInset)
-                        // Two rows like Coda's new-albums shelf: each column
-                        // stacks two album cards, and the columns scroll
-                        // horizontally. Same cards, same data, same tap.
-                        let twoRowHeight = Theme.Layout.coverShelfHeight * 2 + 16
-                        ScrollView(.horizontal, showsIndicators: false) {
-                            LazyHStack(alignment: .top, spacing: 16) {
-                                ForEach(0..<(model.newAlbums.count + 1) / 2, id: \.self) { column in
-                                    VStack(alignment: .leading, spacing: 16) {
-                                        albumCard(model.newAlbums[column * 2], size: size)
-                                        if column * 2 + 1 < model.newAlbums.count {
-                                            albumCard(model.newAlbums[column * 2 + 1], size: size)
-                                        }
+                    ScrollView(.horizontal, showsIndicators: false) {
+                        LazyHStack(alignment: .top, spacing: 16) {
+                            ForEach(0..<(model.newAlbums.count + 1) / 2, id: \.self) { column in
+                                VStack(alignment: .leading, spacing: 16) {
+                                    albumCard(model.newAlbums[column * 2], size: size)
+                                    if column * 2 + 1 < model.newAlbums.count {
+                                        albumCard(model.newAlbums[column * 2 + 1], size: size)
                                     }
                                 }
                             }
-                            .padding(.horizontal, Theme.Layout.contentInset)
-                            .frame(height: twoRowHeight)
                         }
-                        .shelfEdgeClip()
+                        .padding(.horizontal, Theme.Layout.contentInset)
+                        .frame(height: twoRowHeight)
                     }
-                    .frame(height: Theme.Layout.coverShelfHeight * 2 + 16)
+                    .shelfEdgeClip()
+                    .background(
+                        GeometryReader { proxy in
+                            Color.clear.preference(key: NewAlbumsWidthKey.self, value: proxy.size.width)
+                        }
+                    )
                 }
+                .onPreferenceChange(NewAlbumsWidthKey.self) { newAlbumsWidth = $0 }
             }
 
             if !model.topArtists.isEmpty {
