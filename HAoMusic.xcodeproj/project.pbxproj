@@ -1,0 +1,462 @@
+// !$*UTF8*$!
+{
+	archiveVersion = 1;
+	classes = {
+	};
+	objectVersion = 56;
+	objects = {
+		6A64CE6D0CB085F26DE6F8ED = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HAoMusicApp.swift; sourceTree = "<group>"; };
+		5483F485C351605B6DE62D82 = {isa = PBXBuildFile; fileRef = 6A64CE6D0CB085F26DE6F8ED; };
+		14F4EB4F9EAD21031E15DEF5 = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RootTabView.swift; sourceTree = "<group>"; };
+		A93C7BBF0AE7F3A90441C280 = {isa = PBXBuildFile; fileRef = 14F4EB4F9EAD21031E15DEF5; };
+		2500FBB3CDB29AD076FC1EAA = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Track.swift; sourceTree = "<group>"; };
+		A98D3F85745690C17921F64D = {isa = PBXBuildFile; fileRef = 2500FBB3CDB29AD076FC1EAA; };
+		AEE2D999122448CD2B119E66 = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LyricsParser.swift; sourceTree = "<group>"; };
+		7ABA843D91BCDD7822FED89D = {isa = PBXBuildFile; fileRef = AEE2D999122448CD2B119E66; };
+		BE85CA994F0217DAF9208292 = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PlaybackItem.swift; sourceTree = "<group>"; };
+		D5D549F6D0EA82033F0AFB42 = {isa = PBXBuildFile; fileRef = BE85CA994F0217DAF9208292; };
+		AAEF810D2F3443CC33FD20D7 = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PlayerService.swift; sourceTree = "<group>"; };
+		3215A33B9582598FEDC8B0B5 = {isa = PBXBuildFile; fileRef = AAEF810D2F3443CC33FD20D7; };
+		5D5D8E6338CAD1F6B59D8A2A = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LibraryStore.swift; sourceTree = "<group>"; };
+		5F0F84C7B15EA05DEEBAA078 = {isa = PBXBuildFile; fileRef = 5D5D8E6338CAD1F6B59D8A2A; };
+		56F787926478588C5FAE5471 = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DesignTokens.swift; sourceTree = "<group>"; };
+		4C7AAC576D06B3318BB03A3D = {isa = PBXBuildFile; fileRef = 56F787926478588C5FAE5471; };
+		4CDFCF8A13075675D4A96B0C = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HomeView.swift; sourceTree = "<group>"; };
+		2708D6C24775F0432E586FBD = {isa = PBXBuildFile; fileRef = 4CDFCF8A13075675D4A96B0C; };
+		44D1F6526257C8D59E569235 = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LibraryView.swift; sourceTree = "<group>"; };
+		8EC37311C1F6EA22853CE903 = {isa = PBXBuildFile; fileRef = 44D1F6526257C8D59E569235; };
+		D9B369A94E5C0A12523BFC4A = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LyricsView.swift; sourceTree = "<group>"; };
+		3CC6D10816880F1E81408375 = {isa = PBXBuildFile; fileRef = D9B369A94E5C0A12523BFC4A; };
+		9E316A034D84497120260450 = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MiniPlayerBar.swift; sourceTree = "<group>"; };
+		F3976AE55BBFA64F54775976 = {isa = PBXBuildFile; fileRef = 9E316A034D84497120260450; };
+		D5574ADD7FD3C4867C901A40 = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PlayerView.swift; sourceTree = "<group>"; };
+		32107F82EF5DB13D8260992F = {isa = PBXBuildFile; fileRef = D5574ADD7FD3C4867C901A40; };
+		D2D968FE5C4F2D070C9FCC95 = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SearchView.swift; sourceTree = "<group>"; };
+		813727B5399399D536F1A910 = {isa = PBXBuildFile; fileRef = D2D968FE5C4F2D070C9FCC95; };
+		BAC015B6AC5E2036DC25C2A9 = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsView.swift; sourceTree = "<group>"; };
+		7078F07890D084C37A25E526 = {isa = PBXBuildFile; fileRef = BAC015B6AC5E2036DC25C2A9; };
+		66E485A955988AB439B26134 = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TrackCoverView.swift; sourceTree = "<group>"; };
+		8147C8707597556AA3F8B006 = {isa = PBXBuildFile; fileRef = 66E485A955988AB439B26134; };
+		7E4DEFC42280436FF8E0B315 = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TrackRow.swift; sourceTree = "<group>"; };
+		3370A12FAD974F7F5849B869 = {isa = PBXBuildFile; fileRef = 7E4DEFC42280436FF8E0B315; };
+		ED4E2EB04849D716CE453775 = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
+		594A6F42D9F6C8FC73D2F87B = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
+		BF2D281B7D7A9573167CDFC5 = {isa = PBXBuildFile; fileRef = 594A6F42D9F6C8FC73D2F87B; };
+		D158EB2F11B83701EF3B5B87 = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = HAoMusic.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		69D8C06112BCE9F2F52562D7 = {
+			isa = PBXGroup;
+			children = (
+				D9B369A94E5C0A12523BFC4A,
+				9E316A034D84497120260450,
+				D5574ADD7FD3C4867C901A40,
+			);
+			name = Player;
+			path = Player;
+			sourceTree = "<group>";
+		};
+		B38C493CBA194C0570792726 = {
+			isa = PBXGroup;
+			children = (
+				AEE2D999122448CD2B119E66,
+				BE85CA994F0217DAF9208292,
+				AAEF810D2F3443CC33FD20D7,
+			);
+			name = Player;
+			path = Player;
+			sourceTree = "<group>";
+		};
+		C140C8CFAA78E6D936D59437 = {
+			isa = PBXGroup;
+			children = (
+				4CDFCF8A13075675D4A96B0C,
+			);
+			name = Home;
+			path = Home;
+			sourceTree = "<group>";
+		};
+		E119206CB3B04C46F2302964 = {
+			isa = PBXGroup;
+			children = (
+				D2D968FE5C4F2D070C9FCC95,
+			);
+			name = Search;
+			path = Search;
+			sourceTree = "<group>";
+		};
+		A300358237A56F0FF521ADD4 = {
+			isa = PBXGroup;
+			children = (
+				44D1F6526257C8D59E569235,
+			);
+			name = Library;
+			path = Library;
+			sourceTree = "<group>";
+		};
+		54A2D6255F6257EC476C99F9 = {
+			isa = PBXGroup;
+			children = (
+				5D5D8E6338CAD1F6B59D8A2A,
+			);
+			name = Storage;
+			path = Storage;
+			sourceTree = "<group>";
+		};
+		7C5C6239D18BC4D11074C4E5 = {
+			isa = PBXGroup;
+			children = (
+				66E485A955988AB439B26134,
+				7E4DEFC42280436FF8E0B315,
+			);
+			name = Shared;
+			path = Shared;
+			sourceTree = "<group>";
+		};
+		5D9C80795207F6EB4A86B45E = {
+			isa = PBXGroup;
+			children = (
+				2500FBB3CDB29AD076FC1EAA,
+			);
+			name = Models;
+			path = Models;
+			sourceTree = "<group>";
+		};
+		FAA0DB5968FBE48B20F74E63 = {
+			isa = PBXGroup;
+			children = (
+				BAC015B6AC5E2036DC25C2A9,
+			);
+			name = Settings;
+			path = Settings;
+			sourceTree = "<group>";
+		};
+		160BEE35CC66A276E51F9092 = {
+			isa = PBXGroup;
+			children = (
+				6A64CE6D0CB085F26DE6F8ED,
+				14F4EB4F9EAD21031E15DEF5,
+			);
+			name = App;
+			path = App;
+			sourceTree = "<group>";
+		};
+		A4A85CB640FB2A606CF08031 = {
+			isa = PBXGroup;
+			children = (
+				56F787926478588C5FAE5471,
+			);
+			name = DesignSystem;
+			path = DesignSystem;
+			sourceTree = "<group>";
+		};
+		9FEFC34B40556EF7D7F5915A = {
+			isa = PBXGroup;
+			children = (
+				C140C8CFAA78E6D936D59437,
+				A300358237A56F0FF521ADD4,
+				69D8C06112BCE9F2F52562D7,
+				E119206CB3B04C46F2302964,
+				FAA0DB5968FBE48B20F74E63,
+				7C5C6239D18BC4D11074C4E5,
+			);
+			name = Features;
+			path = Features;
+			sourceTree = "<group>";
+		};
+		83945F5507549F1F9049F7E3 = {
+			isa = PBXGroup;
+			children = (
+				ED4E2EB04849D716CE453775,
+				594A6F42D9F6C8FC73D2F87B,
+			);
+			name = Resources;
+			path = Resources;
+			sourceTree = "<group>";
+		};
+		0C529C1E69EDAA70CE43B0A9 = {
+			isa = PBXGroup;
+			children = (
+				5D9C80795207F6EB4A86B45E,
+				B38C493CBA194C0570792726,
+				54A2D6255F6257EC476C99F9,
+			);
+			name = Core;
+			path = Core;
+			sourceTree = "<group>";
+		};
+		44D2CCE54A66785CB310A187 = {
+			isa = PBXGroup;
+			children = (
+				160BEE35CC66A276E51F9092,
+				0C529C1E69EDAA70CE43B0A9,
+				A4A85CB640FB2A606CF08031,
+				9FEFC34B40556EF7D7F5915A,
+				83945F5507549F1F9049F7E3,
+			);
+			name = HAoMusic;
+			path = Sources/HAoMusic;
+			sourceTree = "<group>";
+		};
+		518DA81DB9B99529C0C0AEBE = {isa = PBXGroup; children = (44D2CCE54A66785CB310A187, 2F3A6B1E78F896718625FF06,); sourceTree = "<group>"; };
+		2F3A6B1E78F896718625FF06 = {isa = PBXGroup; children = (D158EB2F11B83701EF3B5B87,); name = Products; sourceTree = "<group>"; };
+		7A70D71C385290AF96BF1031 = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				5483F485C351605B6DE62D82,,
+				A93C7BBF0AE7F3A90441C280,,
+				A98D3F85745690C17921F64D,,
+				7ABA843D91BCDD7822FED89D,,
+				D5D549F6D0EA82033F0AFB42,,
+				3215A33B9582598FEDC8B0B5,,
+				5F0F84C7B15EA05DEEBAA078,,
+				4C7AAC576D06B3318BB03A3D,,
+				2708D6C24775F0432E586FBD,,
+				8EC37311C1F6EA22853CE903,,
+				3CC6D10816880F1E81408375,,
+				F3976AE55BBFA64F54775976,,
+				32107F82EF5DB13D8260992F,,
+				813727B5399399D536F1A910,,
+				7078F07890D084C37A25E526,,
+				8147C8707597556AA3F8B006,,
+				3370A12FAD974F7F5849B869,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		424153ED3CD079DB4DB459AF = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		285BB1C1430063331E9F5DD0 = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				BF2D281B7D7A9573167CDFC5,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		47D110BD895045A1925BB671 = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = F2F62AAE534BA46EC59716F3;
+			buildPhases = (
+				7A70D71C385290AF96BF1031,
+				424153ED3CD079DB4DB459AF,
+				285BB1C1430063331E9F5DD0,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			name = HAoMusic;
+			productName = HAoMusic;
+			productReference = D158EB2F11B83701EF3B5B87;
+			productType = "com.apple.product-type.application";
+		};
+		181B021210331D736ECB540F = {
+			isa = PBXProject;
+			attributes = {
+				LastSwiftUpdateCheck = 2600;
+				LastUpgradeCheck = 2600;
+				TargetAttributes = {
+					47D110BD895045A1925BB671 = {
+						CreatedOnToolsVersion = 26.0;
+					};
+				};
+			};
+			buildConfigurationList = 7EF2517A8FE63F4681EC5EEA;
+			compatibilityVersion = "Xcode 14.0";
+			developmentRegion = en;
+			hasScannedForEncodings = 0;
+			knownRegions = (
+				en,
+				Base,
+			);
+			mainGroup = 518DA81DB9B99529C0C0AEBE;
+			productRefGroup = 2F3A6B1E78F896718625FF06;
+			projectDirPath = "";
+			projectRoot = "";
+			targets = (
+				47D110BD895045A1925BB671,
+			);
+		};
+		969595A508627F35A110362C = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				CLANG_ANALYZER_NONNULL = YES;
+				CLANG_ANALYZER_NUMBER_OBJECT_CONVERSION = YES_AGGRESSIVE;
+				CLANG_CXX_LANGUAGE_STANDARD = "gnu++20";
+				CLANG_ENABLE_MODULES = YES;
+				CLANG_ENABLE_OBJC_ARC = YES;
+				CLANG_ENABLE_OBJC_WEAK = YES;
+				CLANG_WARN_BLOCK_CAPTURE_AUTORELEASING = YES;
+				CLANG_WARN_BOOL_CONVERSION = YES;
+				CLANG_WARN_COMMA = YES;
+				CLANG_WARN_CONSTANT_CONVERSION = YES;
+				CLANG_WARN_DEPRECATED_OBJC_IMPLEMENTATIONS = YES;
+				CLANG_WARN_DIRECT_OBJC_ISA_USAGE = YES_ERROR;
+				CLANG_WARN_DOCUMENTATION_COMMENTS = YES;
+				CLANG_WARN_EMPTY_BODY = YES;
+				CLANG_WARN_ENUM_CONVERSION = YES;
+				CLANG_WARN_INFINITE_RECURSION = YES;
+				CLANG_WARN_INT_CONVERSION = YES;
+				CLANG_WARN_NON_LITERAL_NULL_CONVERSION = YES;
+				CLANG_WARN_OBJC_IMPLICIT_RETAIN_SELF = YES;
+				CLANG_WARN_OBJC_LITERAL_CONVERSION = YES;
+				CLANG_WARN_OBJC_ROOT_CLASS = YES_ERROR;
+				CLANG_WARN_QUOTED_INCLUDE_IN_FRAMEWORK_HEADER = YES;
+				CLANG_WARN_RANGE_LOOP_ANALYSIS = YES;
+				CLANG_WARN_STRICT_PROTOTYPES = YES;
+				CLANG_WARN_SUSPICIOUS_MOVE = YES;
+				CLANG_WARN_UNGUARDED_AVAILABILITY = YES_AGGRESSIVE;
+				CLANG_WARN_UNREACHABLE_CODE = YES;
+				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
+				COPY_PHASE_STRIP = NO;
+				CURRENT_PROJECT_VERSION = 1;
+				DEBUG_INFORMATION_FORMAT = dwarf;
+				ENABLE_TESTABILITY = YES;
+				GCC_C_LANGUAGE_STANDARD = gnu17;
+				GCC_DYNAMIC_NO_PIC = NO;
+				GCC_NO_COMMON_BLOCKS = YES;
+				GCC_OPTIMIZATION_LEVEL = 0;
+				GCC_PREPROCESSOR_DEFINITIONS = (
+					"DEBUG=1",
+					"$(inherited)",
+				);
+				GCC_WARN_64_TO_32_BIT_CONVERSION = YES;
+				GCC_WARN_ABOUT_RETURN_TYPE = YES_ERROR;
+				GCC_WARN_UNDECLARED_SELECTOR = YES;
+				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
+				GCC_WARN_UNUSED_FUNCTION = YES;
+				GCC_WARN_UNUSED_VARIABLE = YES;
+				IPHONEOS_DEPLOYMENT_TARGET = 16.0;
+				LOCALIZATION_PREFS = "";
+				MARKETING_VERSION = 0.1.0;
+				MTL_ENABLE_DEBUG_INFO = INCLUDE_SOURCE;
+				MTL_FAST_MATH = YES;
+				ONLY_ACTIVE_ARCH = YES;
+				SDKROOT = iphoneos;
+				SWIFT_ACTIVE_COMPILATION_CONDITIONS = "DEBUG $(inherited)";
+				SWIFT_OPTIMIZATION_LEVEL = "-Onone";
+			};
+			name = Debug;
+		};
+		4C95F91A6D5CD87BB5DB8FDD = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				CLANG_ANALYZER_NONNULL = YES;
+				CLANG_ANALYZER_NUMBER_OBJECT_CONVERSION = YES_AGGRESSIVE;
+				CLANG_CXX_LANGUAGE_STANDARD = "gnu++20";
+				CLANG_ENABLE_MODULES = YES;
+				CLANG_ENABLE_OBJC_ARC = YES;
+				CLANG_ENABLE_OBJC_WEAK = YES;
+				CLANG_WARN_BLOCK_CAPTURE_AUTORELEASING = YES;
+				CLANG_WARN_BOOL_CONVERSION = YES;
+				CLANG_WARN_COMMA = YES;
+				CLANG_WARN_CONSTANT_CONVERSION = YES;
+				CLANG_WARN_DEPRECATED_OBJC_IMPLEMENTATIONS = YES;
+				CLANG_WARN_DIRECT_OBJC_ISA_USAGE = YES_ERROR;
+				CLANG_WARN_DOCUMENTATION_COMMENTS = YES;
+				CLANG_WARN_EMPTY_BODY = YES;
+				CLANG_WARN_ENUM_CONVERSION = YES;
+				CLANG_WARN_INFINITE_RECURSION = YES;
+				CLANG_WARN_INT_CONVERSION = YES;
+				CLANG_WARN_NON_LITERAL_NULL_CONVERSION = YES;
+				CLANG_WARN_OBJC_IMPLICIT_RETAIN_SELF = YES;
+				CLANG_WARN_OBJC_LITERAL_CONVERSION = YES;
+				CLANG_WARN_OBJC_ROOT_CLASS = YES_ERROR;
+				CLANG_WARN_QUOTED_INCLUDE_IN_FRAMEWORK_HEADER = YES;
+				CLANG_WARN_RANGE_LOOP_ANALYSIS = YES;
+				CLANG_WARN_STRICT_PROTOTYPES = YES;
+				CLANG_WARN_SUSPICIOUS_MOVE = YES;
+				CLANG_WARN_UNGUARDED_AVAILABILITY = YES_AGGRESSIVE;
+				CLANG_WARN_UNREACHABLE_CODE = YES;
+				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
+				COPY_PHASE_STRIP = YES;
+				CURRENT_PROJECT_VERSION = 1;
+				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
+				ENABLE_NS_ASSERTIONS = NO;
+				GCC_C_LANGUAGE_STANDARD = gnu17;
+				GCC_DYNAMIC_NO_PIC = NO;
+				GCC_NO_COMMON_BLOCKS = YES;
+				GCC_OPTIMIZATION_LEVEL = s;
+				GCC_WARN_64_TO_32_BIT_CONVERSION = YES;
+				GCC_WARN_ABOUT_RETURN_TYPE = YES_ERROR;
+				GCC_WARN_UNDECLARED_SELECTOR = YES;
+				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
+				GCC_WARN_UNUSED_FUNCTION = YES;
+				GCC_WARN_UNUSED_VARIABLE = YES;
+				IPHONEOS_DEPLOYMENT_TARGET = 16.0;
+				LOCALIZATION_PREFS = "";
+				MARKETING_VERSION = 0.1.0;
+				MTL_ENABLE_DEBUG_INFO = NO;
+				MTL_FAST_MATH = YES;
+				SDKROOT = iphoneos;
+				SWIFT_COMPILATION_MODE = wholemodule;
+				SWIFT_OPTIMIZATION_LEVEL = "-O";
+				VALIDATE_PRODUCT = YES;
+			};
+			name = Release;
+		};
+		A3FD2624D90AA76C1E18FB70 = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
+				CODE_SIGN_STYLE = Automatic;
+				INFOPLIST_FILE = "Sources/HAoMusic/Resources/Info.plist";
+				IPHONEOS_DEPLOYMENT_TARGET = 16.0;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = com.haostudio.music;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SWIFT_VERSION = 6.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Debug;
+		};
+		CB4CAEBFF1A865FD02635BC0 = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
+				CODE_SIGN_STYLE = Automatic;
+				INFOPLIST_FILE = "Sources/HAoMusic/Resources/Info.plist";
+				IPHONEOS_DEPLOYMENT_TARGET = 16.0;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = com.haostudio.music;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SWIFT_VERSION = 6.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Release;
+		};
+		7EF2517A8FE63F4681EC5EEA = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				969595A508627F35A110362C,
+				4C95F91A6D5CD87BB5DB8FDD,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		F2F62AAE534BA46EC59716F3 = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				A3FD2624D90AA76C1E18FB70,
+				CB4CAEBFF1A865FD02635BC0,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+	};
+	rootObject = 181B021210331D736ECB540F;
+}
