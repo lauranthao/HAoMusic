@@ -1,0 +1,23 @@
+name: iOS Build
+
+on:
+  push:
+    branches: [master]
+  pull_request:
+    branches: [master]
+
+jobs:
+  build:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Show Xcode version
+        run: xcodebuild -version
+      - name: Build for simulator (unsigned)
+        run: |
+          xcodebuild -project HAoMusic.xcodeproj \
+            -target HAoMusic \
+            -configuration Debug \
+            -sdk iphonesimulator \
+            CODE_SIGNING_ALLOWED=NO \
+            build
