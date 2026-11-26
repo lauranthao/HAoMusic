@@ -169,6 +169,8 @@
 		F4866E9878421E61B2B19C86 = {isa = PBXBuildFile; fileRef = A4EAB115DD5CCFE5A622531D; };
 		1A79664C306CE530B3848E94 = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AudioQualityCheck.swift; sourceTree = "<group>"; };
 		CC0A6F0EF8A82707D4B90D17 = {isa = PBXBuildFile; fileRef = 1A79664C306CE530B3848E94; };
+		D26770E0C01D99789571D8F0 = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CodaSharedTypes.swift; sourceTree = "<group>"; };
+		442842E22C8C9DCEF84677BB = {isa = PBXBuildFile; fileRef = D26770E0C01D99789571D8F0; };
 		A52C926A77B4C7ABDC13FF8F = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MusicMembership.swift; sourceTree = "<group>"; };
 		8D4311F989EAE4A80CB4D0EA = {isa = PBXBuildFile; fileRef = A52C926A77B4C7ABDC13FF8F; };
 		8D46EF397438D910C840EE14 = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProviderModels.swift; sourceTree = "<group>"; };
@@ -541,6 +543,7 @@
 			isa = PBXGroup;
 			children = (
 				1A79664C306CE530B3848E94,
+				D26770E0C01D99789571D8F0,
 				A52C926A77B4C7ABDC13FF8F,
 				8D46EF397438D910C840EE14,
 				E29641660DA19D394A04E2CE,
@@ -1042,6 +1045,7 @@
 				6C7594A4551993E99699EE91,
 				17292D6441915F5D212CFC69,
 				CC0A6F0EF8A82707D4B90D17,
+				442842E22C8C9DCEF84677BB,
 				8D4311F989EAE4A80CB4D0EA,
 				4445CEF81A4A719401A8A8D9,
 				BB0EA312C8F1CAC8E795B098,
