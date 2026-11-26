@@ -9,6 +9,7 @@ struct NowPlayingView: View {
     @ObservedObject private var lyricsCursor = PlayerService.shared.lyricsCursor
     @EnvironmentObject private var account: AccountStore
     @EnvironmentObject private var settings: SettingsManager
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     #if os(macOS)
     @EnvironmentObject private var artworkStore: NowPlayingArtworkStore
     #endif
@@ -255,11 +256,8 @@ struct NowPlayingView: View {
                     .ignoresSafeArea()
             }
             #endif
-            LinearGradient(
-                colors: [colors.primary, colors.secondary],
-                startPoint: .topLeading, endPoint: .bottomTrailing
-            )
-            .opacity(artworkGradientOpacity)
+            FluidColorField(colors: colors)
+                .opacity(artworkGradientOpacity)
             RadialGradient(
                 colors: [.white.opacity(0.12), .clear],
                 center: .topLeading, startRadius: 0, endRadius: 700
@@ -281,6 +279,94 @@ struct NowPlayingView: View {
         #else
         1
         #endif
+    }
+
+    /// The cover colors as a slow-drifting field instead of a flat gradient:
+    /// the dominant colors wash across the page and flow into each other when
+    /// the track changes. Pure SwiftUI — blurred color orbs drifting on long,
+    /// unsynchronised loops — the visible behaviour of a fluid backdrop,
+    /// without a Metal renderer. Static when Reduce Motion is on.
+    private struct FluidColorField: View {
+        let colors: ArtworkColors
+
+        @Environment(\.accessibilityReduceMotion) private var reduceMotion
+        @State private var drift = false
+
+        var body: some View {
+            GeometryReader { geo in
+                let span = min(geo.size.width, geo.size.height)
+                ZStack {
+                    // The flat wash underneath keeps the page tinted even
+                    // while the orbs drift apart.
+                    LinearGradient(
+                        colors: [colors.primary, colors.secondary],
+                        startPoint: .topLeading, endPoint: .bottomTrailing
+                    )
+                    orb(colors.primary, diameter: span * 0.9, opacity: 0.55,
+                        base: CGPoint(x: geo.size.width * 0.22, y: geo.size.height * 0.20),
+                        drift: CGVector(dx: 44, dy: -34), duration: 21)
+                    orb(colors.secondary, diameter: span * 0.8, opacity: 0.5,
+                        base: CGPoint(x: geo.size.width * 0.82, y: geo.size.height * 0.78),
+                        drift: CGVector(dx: -52, dy: 38), duration: 27)
+                    orb(.white, diameter: span * 0.55, opacity: 0.10,
+                        base: CGPoint(x: geo.size.width * 0.5, y: geo.size.height * 0.42),
+                        drift: CGVector(dx: 30, dy: 26), duration: 17)
+                }
+            }
+            .onAppear {
+                guard !reduceMotion else { return }
+                drift = true
+            }
+        }
+
+        private func orb(_ color: Color, diameter: CGFloat, opacity: Double,
+                         base: CGPoint, drift driftVector: CGVector, duration: Double) -> some View {
+            Circle()
+                .fill(color.opacity(opacity))
+                .frame(width: diameter, height: diameter)
+                .blur(radius: 55)
+                .position(base)
+                .offset(x: drift ? driftVector.dx : -driftVector.dx,
+                        y: drift ? driftVector.dy : -driftVector.dy)
+                .animation(
+                    .easeInOut(duration: duration).repeatForever(autoreverses: true),
+                    value: drift
+                )
+        }
+    }
+
+    /// The cover's playing pulse: on play it swells ~5% on a quick ease-out,
+    /// then settles back on a spring, while its shadow deepens; paused it
+    /// rests flat. Honours Reduce Motion, and the spring uses the iOS 16
+    /// form below iOS 17.
+    private struct PlayingArtworkBounce: ViewModifier {
+        let isPlaying: Bool
+        let enabled: Bool
+
+        @Environment(\.accessibilityReduceMotion) private var reduceMotion
+        @State private var bounceScale: CGFloat = 1
+
+        func body(content: Content) -> some View {
+            content
+                .scaleEffect(bounceScale)
+                .task(id: isPlaying) {
+                    guard enabled, isPlaying, !reduceMotion else {
+                        bounceScale = 1
+                        return
+                    }
+                    bounceScale = 1
+                    await Task.yield()
+                    guard !Task.isCancelled else { return }
+                    withAnimation(.easeOut(duration: 0.17)) { bounceScale = 1.055 }
+                    try? await Task.sleep(for: .milliseconds(170))
+                    guard !Task.isCancelled else { return }
+                    if #available(iOS 17, *) {
+                        withAnimation(.spring(duration: 0.42, bounce: 0.24)) { bounceScale = 1 }
+                    } else {
+                        withAnimation(.spring(response: 0.42, dampingFraction: 0.76)) { bounceScale = 1 }
+                    }
+                }
+        }
     }
 
     #if os(iOS)
@@ -695,6 +781,12 @@ struct NowPlayingView: View {
         .padding(.horizontal, 32)
     }
 
+    /// The lyrics page scales up from 90% as it fades in; a plain fade when
+    /// Reduce Motion is on.
+    private var lyricsEntranceTransition: AnyTransition {
+        reduceMotion ? .opacity : .scale(scale: 0.9).combined(with: .opacity)
+    }
+
     private func classicCompactLayout(size: CGSize) -> some View {
         let artworkDim = min(size.width - 64, size.height * 0.38, 300)
         return VStack(spacing: 20) {
@@ -705,7 +797,16 @@ struct NowPlayingView: View {
                     lyricsColumn
                 }
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
-                .transition(.opacity)
+                .contentShape(Rectangle())
+                .onTapGesture {
+                    withAnimation(AppAnimation.standard) {
+                        showLyricsOnMobile = false
+                    }
+                }
+                .transition(.asymmetric(
+                    insertion: lyricsEntranceTransition,
+                    removal: .opacity
+                ))
                 #else
                 lyricsColumn
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -713,7 +814,11 @@ struct NowPlayingView: View {
                 #endif
             } else {
                 VStack(spacing: 20) {
-                    artworkView(size: artworkDim)
+                    artworkView(size: artworkDim) {
+                        withAnimation(AppAnimation.standard) {
+                            showLyricsOnMobile = true
+                        }
+                    }
                     trackMetaView
                     MiniLyricsView {
                         withAnimation(AppAnimation.standard) {
@@ -722,7 +827,10 @@ struct NowPlayingView: View {
                     }
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
                 }
-                .transition(.opacity)
+                .transition(.asymmetric(
+                    insertion: .opacity,
+                    removal: reduceMotion ? .opacity : .move(edge: .top).combined(with: .opacity)
+                ))
             }
             VStack(spacing: 12) {
                 NowPlayingScrubber()
@@ -765,6 +873,7 @@ struct NowPlayingView: View {
                         IOSImmersiveLyricsColumn()
                     }
                         .opacity(showLyricsOnMobile ? 1 : 0)
+                        .scaleEffect(showLyricsOnMobile || reduceMotion ? 1 : 0.9)
                         .allowsHitTesting(showLyricsOnMobile)
                         .accessibilityHidden(!showLyricsOnMobile)
                 }
@@ -856,6 +965,8 @@ struct NowPlayingView: View {
             Spacer(minLength: 8)
             Color.clear
                 .frame(width: artworkDimension, height: artworkDimension)
+                .contentShape(Rectangle())
+                .onTapGesture(perform: showImmersiveLyrics)
                 .anchorPreference(
                     key: ImmersiveArtworkFramePreferenceKey.self,
                     value: .bounds
@@ -889,10 +1000,12 @@ struct NowPlayingView: View {
             )
         )
         .shadow(
-            color: .black.opacity(isExpanded ? 0.45 : 0.22),
-            radius: isExpanded ? 36 : 10,
-            y: isExpanded ? 18 : 4
+            color: .black.opacity(isExpanded ? (player.isPlaying ? 0.5 : 0.45) : 0.22),
+            radius: isExpanded ? (player.isPlaying ? 40 : 36) : 10,
+            y: isExpanded ? (player.isPlaying ? 20 : 18) : 4
         )
+        .animation(reduceMotion ? nil : AppAnimation.standard, value: player.isPlaying)
+        .modifier(PlayingArtworkBounce(isPlaying: player.isPlaying, enabled: isExpanded))
     }
 
     private func toggleImmersiveLyrics() {
@@ -1052,7 +1165,8 @@ struct NowPlayingView: View {
     private func artworkView(
         size: CGFloat,
         shadowRadius: CGFloat = 36,
-        cornerRadius: CGFloat = 18
+        cornerRadius: CGFloat = 18,
+        onTapArtwork: (() -> Void)? = nil
     ) -> some View {
         Group {
             if settings.openAlbumOnArtworkClick,
@@ -1065,6 +1179,11 @@ struct NowPlayingView: View {
                 .buttonStyle(.plain)
                 .noFocusRing()
                 .accessibilityLabel("打开专辑：\(album.name)")
+            } else if let onTapArtwork {
+                artworkSurface(size: size, shadowRadius: shadowRadius, cornerRadius: cornerRadius)
+                    .onTapGesture(perform: onTapArtwork)
+                    .accessibilityAddTraits(.isButton)
+                    .accessibilityLabel("显示歌词")
             } else {
                 artworkSurface(size: size, shadowRadius: shadowRadius, cornerRadius: cornerRadius)
             }
@@ -1093,10 +1212,13 @@ struct NowPlayingView: View {
         }
         .frame(width: size, height: size)
         .clipShape(RoundedRectangle(cornerRadius: cornerRadius, style: .continuous))
-        .shadow(color: .black.opacity(0.45), radius: shadowRadius, y: shadowRadius * 0.5)
+        .shadow(color: .black.opacity(player.isPlaying ? 0.45 : 0.3),
+                radius: player.isPlaying ? shadowRadius : shadowRadius * 0.6,
+                y: (player.isPlaying ? shadowRadius : shadowRadius * 0.6) * 0.5)
         .animation(.easeIn(duration: 0.25), value: artworkImage != nil)
         .scaleEffect(player.isPlaying ? 1 : 0.95)
-        .animation(AppAnimation.bouncy, value: player.isPlaying)
+        .animation(reduceMotion ? nil : AppAnimation.bouncy, value: player.isPlaying)
+        .modifier(PlayingArtworkBounce(isPlaying: player.isPlaying, enabled: size >= 120))
     }
 
     private var trackMetaView: some View {
