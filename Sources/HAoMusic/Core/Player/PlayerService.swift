@@ -112,6 +112,21 @@ final class PlaybackClock: ObservableObject {
 @MainActor
 final class LyricsCursor: ObservableObject {
     @Published var activeIndex: Int?
+
+    /// Bumps on every seek and lyrics-timing change so a stale seek-feedback
+    /// snapshot can tell it is stale. (Glue for the copied Coda lyrics column.)
+    @Published var seekRevision: UInt = 0
+
+    /// The set form the copied lyrics column reads; HAo highlights one line.
+    var activeIndices: Set<Int> {
+        activeIndex.map { Set([$0]) } ?? []
+    }
+
+    /// Seconds until `lyricTime` becomes current, while playing; nil otherwise.
+    func timeUntilFocus(at lyricTime: TimeInterval) -> TimeInterval? {
+        guard PlayerService.shared.isPlaying else { return nil }
+        return lyricTime - PlayerService.shared.livePlaybackTime
+    }
 }
 
 @MainActor
@@ -135,11 +150,22 @@ final class PlayerService: ObservableObject {
     @Published private(set) var autoMixQueue: [Track] = []
     @Published private(set) var playNextList: [Track] = []
     @Published private(set) var currentIndex = -1
-    @Published private(set) var currentTrack: Track?
+    @Published private(set) var currentTrack: Track? {
+        didSet {
+            guard currentTrack?.id != oldValue?.id else { return }
+            lyricsTimingSteps = currentTrack.map {
+                UserDefaults.standard.integer(forKey: "lyrics.timing.\($0.id)")
+            } ?? 0
+        }
+    }
     private var playbackAccountID: Int?
     @Published private(set) var source: PlaySource = .none
     @Published private(set) var isPlaying = false
     @Published private(set) var isBuffering = false
+    /// The copied player shows a loading state while the current track is
+    /// playing but not yet audible. (Coda also covers its Qishui/FM feeds;
+    /// HAo has neither, so buffering is the whole signal.)
+    var showsPlaybackLoading: Bool { isPlaying && isBuffering }
     @Published private(set) var duration: TimeInterval = 0
     @Published private(set) var servedQuality: String?
     @Published private(set) var unblockSource: String?
@@ -178,6 +204,30 @@ final class PlayerService: ObservableObject {
     /// surfaced as "Recently Played" in the Dock menu.
     @Published private(set) var recentContexts: [PlayContext] = []
     @Published private(set) var lyrics: ParsedLyrics?
+    /// True when the current track's lyric load failed (no cached copy and the
+    /// network fetch returned nothing). The copied lyrics column shows a retry.
+    @Published private(set) var lyricsLoadFailed = false
+    /// Positive values display lyrics earlier; integer tenths avoid rounding drift.
+    /// Per-track offset, persisted like Coda's. (Glue for the copied lyrics column.)
+    @Published private(set) var lyricsTimingSteps = 0 {
+        didSet {
+            updateLyricsCursor(at: livePlaybackTime)
+            lyricsCursor.seekRevision &+= 1
+        }
+    }
+    var lyricsTimeOffset: TimeInterval { Double(lyricsTimingSteps) / 10 }
+
+    func adjustLyricsTiming(by steps: Int) {
+        setLyricsTiming(steps: lyricsTimingSteps + steps)
+    }
+
+    func setLyricsTiming(steps: Int) {
+        guard let track = currentTrack else { return }
+        lyricsTimingSteps = steps
+        let key = "lyrics.timing.\(track.id)"
+        if steps == 0 { UserDefaults.standard.removeObject(forKey: key) }
+        else { UserDefaults.standard.set(steps, forKey: key) }
+    }
     @Published var activePanel: RightPanel?
     @Published var showNowPlaying = false
 
@@ -594,7 +644,7 @@ final class PlayerService: ObservableObject {
     /// Recomputes the current lyric line, publishing only on a change.
     /// The lead makes a line light up just before it is sung.
     private func updateLyricsCursor(at seconds: TimeInterval) {
-        let index = lyrics?.activeIndex(at: seconds + 0.2)
+        let index = lyrics?.activeIndex(at: seconds + 0.2 + lyricsTimeOffset)
         if index != lyricsCursor.activeIndex {
             lyricsCursor.activeIndex = index
         }
@@ -624,6 +674,7 @@ final class PlayerService: ObservableObject {
         let wasArmed = transitionArmed
         if wasArmed { disarmTransition(keepingPrerender: true) }
         progress = seconds
+        lyricsCursor.seekRevision &+= 1
         updateLyricsCursor(at: seconds)
         engine.seek(deck: activeDeck, to: seconds)
         NowPlayingManager.shared.updateElapsed(seconds, rate: isPlaying ? 1 : 0)
@@ -771,6 +822,67 @@ final class PlayerService: ObservableObject {
 
     /// Removes the row itself: a repeated song leaves the occurrence the
     /// listener chose, not its first one, so the current index stays put.
+    /// Moves the upcoming row at `offsets` to `destination`, resolving both
+    /// rows by id like jumpToUpcoming/removeUpcoming do. Only moves within one
+    /// backing list (play-next or the queue tail); a move across the two
+    /// sections lands at the section boundary instead, and FM rows never move.
+    /// (Glue for the copied Coda inline queue's drag-to-reorder. macOS only:
+    /// the queue has three orders, so the move runs in the active order by
+    /// offset and by id in the other two, mirroring removeQueueRow.)
+    func moveUpcoming(from offsets: IndexSet, to destination: Int, matching trackIDs: [Int]) -> Bool {
+        guard let sourceIndex = offsets.first,
+              sourceIndex < trackIDs.count, destination <= trackIDs.count,
+              let source = upcomingCandidate(at: sourceIndex, matching: trackIDs[sourceIndex]) else { return false }
+        let movedID = trackIDs[sourceIndex]
+        let anchorID: Int? = (destination < trackIDs.count && destination != sourceIndex)
+            ? trackIDs[destination] : nil
+        switch source.origin {
+        case .inserted:
+            guard let from = playNextList.firstIndex(where: { $0.id == movedID }) else { return false }
+            let item = playNextList.remove(at: from)
+            let insertAt = anchorID.flatMap { id in playNextList.firstIndex(where: { $0.id == id }) }
+                ?? playNextList.count
+            playNextList.insert(item, at: insertAt)
+            return true
+        case .queue(let offset):
+            // The active order moves by offset (the candidate indexes it); the
+            // other two orders move the same track before the anchor id, so all
+            // three keep the same elements.
+            let item: Track
+            switch queueOrder {
+            case .listed:
+                guard activeQueue.indices.contains(offset) else { return false }
+                item = queue.remove(at: offset)
+            case .shuffled:
+                guard activeQueue.indices.contains(offset) else { return false }
+                item = shuffledQueue.remove(at: offset)
+            case .autoMix:
+                guard activeQueue.indices.contains(offset) else { return false }
+                item = autoMixQueue.remove(at: offset)
+            }
+            if queueOrder != .listed, let idx = queue.firstIndex(where: { $0.id == movedID }) {
+                queue.remove(at: idx)
+            }
+            if queueOrder != .shuffled, let idx = shuffledQueue.firstIndex(where: { $0.id == movedID }) {
+                shuffledQueue.remove(at: idx)
+            }
+            if queueOrder != .autoMix, let idx = autoMixQueue.firstIndex(where: { $0.id == movedID }) {
+                autoMixQueue.remove(at: idx)
+            }
+            let at: (inout [Track]) -> Int = { list in
+                anchorID.flatMap { id in list.firstIndex(where: { $0.id == id }) } ?? list.count
+            }
+            queue.insert(item, at: at(&queue))
+            shuffledQueue.insert(item, at: at(&shuffledQueue))
+            autoMixQueue.insert(item, at: at(&autoMixQueue))
+            refreshAutoMixLookahead(force: true)
+            schedulePrefetch()
+            return true
+        case .fm:
+            return false
+        }
+    }
+
     func removeUpcoming(at index: Int, matching trackID: Int) {
         guard let selected = upcomingCandidate(at: index, matching: trackID) else { return }
         switch selected.origin {
@@ -1032,6 +1144,7 @@ final class PlayerService: ObservableObject {
         startScrobbled = false
         isPlaying = true
         lyricsCursor.activeIndex = nil
+        lyricsCursor.seekRevision &+= 1
         // Before the URL is even resolved: holds the bars still rather than
         // letting them fall back to the decorative animation for the moment it
         // takes to find out whether this source can be tapped.
@@ -2729,7 +2842,16 @@ final class PlayerService: ObservableObject {
         }
     }
 
+    /// The copied player calls this when the track changes and from the lyrics
+    /// retry button. HAo already loads lyrics during track adoption; this is
+    /// the safety net for a missed load and the retry path.
+    func loadCurrentLyricsIfNeeded() async {
+        guard let track = currentTrack, lyrics == nil else { return }
+        await loadLyrics(for: track, generation: resolveGeneration)
+    }
+
     private func loadLyrics(for track: Track, generation: Int) async {
+        lyricsLoadFailed = false
         let scope = offlineAccountScope
         if let scope, let saved = await OfflineMetadataStore.shared.lyrics(trackID: track.id, scope: scope) {
             guard !Task.isCancelled, generation == resolveGeneration else { return }
@@ -2737,7 +2859,10 @@ final class PlayerService: ObservableObject {
         }
         guard !Task.isCancelled, generation == resolveGeneration, !usesOfflineQueue else { return }
         let response = try? await MusicAPI.lyric(id: track.id)
-        guard !Task.isCancelled, generation == resolveGeneration, let response else { return }
+        guard !Task.isCancelled, generation == resolveGeneration, let response else {
+            if lyrics == nil { lyricsLoadFailed = true }
+            return
+        }
         applyLyrics(response)
         // The engine caches every song it streams, so each one may play offline.
         if let scope { await OfflineMetadataStore.shared.keepPlaybackData(track: track, lyrics: response, scope: scope) }

@@ -35,41 +35,61 @@ struct NowPlayingView: View {
     @State private var showsVolumeControl = false
     #endif
 
+    #if os(iOS)
+    // Coda's portrait player state (copied verbatim from Coda's
+    // NowPlayingView). Only used on iPhone in the default immersive mode.
+    // Restore the last explicit lyric/artwork choice across presentations and launches.
+    @AppStorage("player.singleColumnLyricsVisible") private var showsSingleColumnLyrics = true
+    @State private var portraitLyricsEntrancePresented = true
+    @State private var portraitLyricsEntranceStartedAt: ContinuousClock.Instant?
+    @State private var portraitLyricsExitStartedAt: ContinuousClock.Instant?
+    @State private var portraitPreparedLyricsTrackID: Int?
+    @State private var portraitArtworkPageFrame: CGRect = .zero
+    @State private var portraitControlsCollapsed = false
+    @State private var portraitControlsHeight: CGFloat = 320
+    @State private var portraitControlsActivityGeneration = 0
+    @State private var portraitControlsInteractionActive = false
+    @Environment(\.accessibilityVoiceOverEnabled) private var playerVoiceOverEnabled
+    /// Which portrait panel is showing (lyrics / queue / comments).
+    private enum IPadPanel { case lyrics, queue, comments }
+    @State private var iPadPanel: IPadPanel = .lyrics
+    /// Track whose comments are open. HAo token (Int?) — Coda keeps a
+    /// SongCommentsStore here; HAo's comments view takes just the track.
+    @State private var iPadComments: Int?
+    @State private var playlistTrack: Track?
+    @ScaledMetric(relativeTo: .title3) private var iPadMetadataHeight: CGFloat = 56
+    #endif
+
     var body: some View {
         GeometryReader { geo in
             let isCompact = geo.size.width < 720
             ZStack {
-                backdrop
-
-                if isCompact {
-                    // Cap the compact layout at the screen height. The
-                    // lyrics middle is a ScrollView (inside the pager's
-                    // TabView) whose ideal height is its full content, so
-                    // without a cap the VStack sizes taller than the screen
-                    // in the lyrics state and shoves the scrubber, transport
-                    // and secondary row off the bottom edge (#18). A max cap
-                    // only binds when the content overflows: the artwork
-                    // state is shorter than the screen and stays exactly as
-                    // it is; the lyrics state flexes the middle and the
-                    // lyrics scroll inside it.
-                    compactLayout(size: geo.size)
-                        .frame(maxHeight: geo.size.height)
+                #if os(iOS)
+                if usesCodaPortrait(size: geo.size) {
+                    // Coda's portrait player verbatim (members in the
+                    // extension at the end of this file): touch shield,
+                    // fluid backdrop, big cover with everything below it.
+                    // No top header — chen 2026-11-26.
+                    NowPlayingTouchShield()
+                        .ignoresSafeArea()
+                    codaBackdrop
+                    portraitLayout(size: geo.size)
                 } else {
-                    #if os(iOS)
-                    switch settings.landscapeNowPlayingStyle {
-                    case .classic:
-                        regularLayout(size: geo.size)
-                    case .immersive:
-                        landscapeImmersiveLayout(size: geo.size)
-                    }
-                    #else
-                    regularLayout(size: geo.size)
-                    #endif
+                    backdrop
+                    nowPlayingLayout(isCompact: isCompact, size: geo.size)
                 }
+                #else
+                backdrop
+                nowPlayingLayout(isCompact: isCompact, size: geo.size)
+                #endif
             }
             // Pin to the screen width so an intrinsically-wide child can never
             // stretch the ZStack and push the corner overlays off-screen.
             .frame(width: geo.size.width)
+            #if os(iOS)
+            // The portrait track row's add-to-playlist button reads this.
+            .environment(\.playlistPanelSelected, playlistTrack != nil)
+            #endif
             #if os(iOS)
             .overlayPreferenceValue(CompactVolumeButtonAnchorKey.self) { anchor in
                 volumeLayer(buttonAnchor: anchor)
@@ -169,6 +189,11 @@ struct NowPlayingView: View {
         }
         #endif
         #if os(iOS)
+        .task(id: player.currentTrack?.id) {
+            await player.loadCurrentLyricsIfNeeded()
+        }
+        #endif
+        #if os(iOS)
         .onAppear {
             showLyricsOnMobile = settings.nowPlayingMode == .immersive
             showQueueOnMobile = false
@@ -182,12 +207,69 @@ struct NowPlayingView: View {
                 showLyricsOnMobile = false
             }
         }
+        .onChange(of: player.currentTrack?.id) { _ in
+            // Coda's portrait bookkeeping: keep the add-to-playlist panel on
+            // the new track, and re-open comments for it if they were open.
+            if playlistTrack != nil { playlistTrack = player.currentTrack }
+            iPadComments = iPadPanel == .comments ? player.currentTrack?.id : nil
+        }
         #endif
         #if os(macOS)
         .onExitCommand {
             close()
         }
         #endif
+    }
+
+    #if os(iOS)
+    /// Coda's portrait player, for chen's phone in the default immersive mode.
+    /// iPad, landscape and the other modes keep HAo's existing layouts.
+    private func usesCodaPortrait(size: CGSize) -> Bool {
+        UIDevice.current.userInterfaceIdiom == .phone
+            && settings.nowPlayingMode == .immersive
+            && usesPortraitLayout(size: size)
+    }
+
+    /// Coda's fluid background for the portrait player (Metal audio-reactive
+    /// when available, gradient fallback). No wallpaper here, as everywhere
+    /// in the player.
+    private var codaBackdrop: some View {
+        NowPlayingFluidBackground(artwork: artworkImage, artworkKey: player.currentTrack?.album.picUrl,
+                                  colors: colors, playing: player.isPlaying)
+            .environment(\.colorScheme, .dark)
+    }
+    #endif
+
+    /// HAo's own layout dispatch (compact / regular / landscape immersive),
+    /// factored out so the portrait branch can sit beside it. The compact
+    /// cap below is unchanged from the old inline dispatch.
+    @ViewBuilder
+    private func nowPlayingLayout(isCompact: Bool, size: CGSize) -> some View {
+        if isCompact {
+            // Cap the compact layout at the screen height. The
+            // lyrics middle is a ScrollView (inside the pager's
+            // TabView) whose ideal height is its full content, so
+            // without a cap the VStack sizes taller than the screen
+            // in the lyrics state and shoves the scrubber, transport
+            // and secondary row off the bottom edge (#18). A max cap
+            // only binds when the content overflows: the artwork
+            // state is shorter than the screen and stays exactly as
+            // it is; the lyrics state flexes the middle and the
+            // lyrics scroll inside it.
+            compactLayout(size: size)
+                .frame(maxHeight: size.height)
+        } else {
+            #if os(iOS)
+            switch settings.landscapeNowPlayingStyle {
+            case .classic:
+                regularLayout(size: size)
+            case .immersive:
+                landscapeImmersiveLayout(size: size)
+            }
+            #else
+            regularLayout(size: size)
+            #endif
+        }
     }
 
     private var hasLyricsColumn: Bool {
@@ -3045,75 +3127,138 @@ private struct MinimalTransportControls: View {
 #endif
 
 
+// Coda's NowPlayingScrubber, copied verbatim from Coda's
+// Features/Player/NowPlayingView.swift (AGPL-3.0). Replaces HAo's own
+// NowPlayingScrubber: same name and call sites, Coda's behaviour and the
+// quality pill overlay (HAo-native NowPlayingQualityControl).
 // MARK: - Scrubber (white-on-dark variant)
 
 struct NowPlayingScrubber: View {
+    var showsRemainingTime = false
+    var rowHeight: CGFloat = 44
+    var trackHeight: CGFloat = NowPlayingSliderStyle.trackHeight
+    var tint: Color = .white
+    var showsQualityControl = true
+    var alignsWithTrackSummary = false
     @EnvironmentObject private var player: PlayerService
     @ObservedObject private var clock = PlayerService.shared.clock
+    @ObservedObject private var windowVisibility = MainWindowVisibility.shared
+    @Environment(\.scenePhase) private var scenePhase
 
-    @State private var isHovering = false
     @State private var isDragging = false
     @State private var dragProgress: Double = 0
+    @State private var dragDuration: TimeInterval = 0
+    @State private var dragTrackID: Int?
+    @State private var cancelledDuringGesture = false
 
-    private var fraction: Double {
-        guard player.duration > 0 else { return 0 }
-        let value = isDragging ? dragProgress : clock.progress
-        return min(max(value / player.duration, 0), 1)
+    private var updatesContinuously: Bool {
+        player.isPlaying && !player.isBuffering && !isDragging
+            && windowVisibility.isVisible && scenePhase != .background
     }
 
     var body: some View {
-        VStack(spacing: 5) {
-            GeometryReader { geo in
-                let width = geo.size.width
-                ZStack(alignment: .leading) {
-                    Capsule()
-                        .fill(.white.opacity(0.25))
-                        .frame(height: 4)
-                    Capsule()
-                        .fill(.white)
-                        .frame(width: max(4, width * fraction), height: 4)
-                    Circle()
-                        .fill(.white)
-                        .frame(width: thumbDiameter, height: thumbDiameter)
-                        .shadow(color: .black.opacity(0.3), radius: 2, y: 1)
-                        .offset(x: width * fraction - thumbDiameter / 2)
-                        .opacity(isHovering || isDragging ? 1 : 0)
-                }
-                .frame(maxHeight: .infinity)
-                .contentShape(Rectangle())
-                .gesture(
-                    DragGesture(minimumDistance: 0)
-                        .onChanged { value in
-                            guard player.duration > 0 else { return }
-                            isDragging = true
-                            player.isScrubbing = true
-                            dragProgress = min(max(value.location.x / width, 0), 1) * player.duration
-                        }
-                        .onEnded { _ in
-                            player.seek(to: dragProgress)
-                            isDragging = false
-                            player.isScrubbing = false
-                        }
-                )
+        // Read the engine clock on the display schedule without publishing
+        // per-frame playback updates to the rest of the player.
+        TimelineView(.animation(paused: !updatesContinuously)) { _ in
+            let duration = isDragging ? dragDuration : player.duration
+            let position = isDragging ? dragProgress : player.livePlaybackTime
+            let elapsed = position.isFinite ? max(position, 0) : clock.progress
+            let fraction = duration.isFinite && duration > 0 ? min(elapsed / duration, 1) : 0
+            scrubber(fraction: fraction, elapsed: elapsed)
+        }
+        .frame(height: rowHeight)
+        // Keep quality controls outside the seek gesture's subtree.
+        .overlay(alignment: .bottom) {
+            if showsQualityControl {
+                NowPlayingQualityControl()
+                    .frame(width: 148, height: 24)
+                    .contentShape(Rectangle())
             }
-            .frame(height: 14)
-            .onHover { hovering in
-                withAnimation(AppAnimation.quick) { isHovering = hovering }
+        }
+        .accessibilityElement(children: .contain)
+        .accessibilityIdentifier("nowPlayingProgress")
+        .onChange(of: player.currentTrack?.id) { _ in
+            if isDragging {
+                cancelledDuringGesture = true
+                cancelScrubbing()
             }
+        }
+        .onDisappear { cancelScrubbing() }
+    }
 
-            HStack {
-                Text(Formatters.duration(isDragging ? dragProgress : clock.progress))
-                Spacer()
-                Text(Formatters.duration(player.duration))
+    private func scrubber(fraction: Double, elapsed: TimeInterval) -> some View {
+        GeometryReader { geo in
+            VStack(spacing: 5) {
+                PlayerSlider(fraction: fraction, fillColor: tint,
+                             trackColor: tint.opacity(NowPlayingSliderStyle.trackOpacity),
+                             trackHeight: trackHeight, onChanged: { value in
+                    guard !cancelledDuringGesture else { return }
+                    if !isDragging {
+                        guard player.duration.isFinite, player.duration > 0 else { return }
+                        dragDuration = player.duration
+                        dragTrackID = player.currentTrack?.id
+                        isDragging = true
+                        player.isScrubbing = true
+                    }
+                    guard dragTrackID == player.currentTrack?.id else {
+                        cancelledDuringGesture = true
+                        cancelScrubbing()
+                        return
+                    }
+                    dragProgress = value * dragDuration
+                }, onEnded: { value in
+                    if isDragging, dragTrackID == player.currentTrack?.id {
+                        player.seek(to: value * dragDuration)
+                    }
+                    cancelScrubbing()
+                    cancelledDuringGesture = false
+                }, onCancelled: {
+                    cancelScrubbing()
+                    cancelledDuringGesture = false
+                })
+                .frame(height: 24)
+                // The dock title is centered 9.5pt above the summary's midpoint.
+                .offset(y: alignsWithTrackSummary ? -(16 + 3) / 2 : 0)
+
+                if !alignsWithTrackSummary {
+                    timeLabels(elapsed: elapsed)
+                }
             }
-            .font(.system(size: 10.5).monospacedDigit())
-            .foregroundStyle(.white.opacity(0.55))
+            .frame(width: geo.size.width, height: geo.size.height)
+            .overlay {
+                if alignsWithTrackSummary {
+                    // Match the dock's 18pt title + 3pt gap above its 16pt artist line.
+                    timeLabels(elapsed: elapsed).offset(y: (18 + 3) / 2)
+                }
+            }
         }
     }
 
-    private var thumbDiameter: CGFloat {
-        isDragging ? 13 : (isHovering ? 11 : 9)
+    private func timeLabels(elapsed: TimeInterval) -> some View {
+        HStack {
+            Text(Formatters.duration(elapsed))
+                .accessibilityIdentifier("nowPlayingElapsedTime")
+            Spacer()
+            if showsRemainingTime {
+                Text("−" + Formatters.duration(max(0, player.duration - elapsed)))
+                    .accessibilityIdentifier("nowPlayingRemainingTime")
+            } else {
+                Text(Formatters.duration(player.duration))
+            }
+        }
+        .font(Theme.Typography.caption.monospacedDigit())
+        .foregroundStyle(tint.opacity(0.55))
     }
+
+    private func cancelScrubbing() {
+        guard isDragging else { return }
+        isDragging = false
+        dragTrackID = nil
+        dragDuration = 0
+        player.isScrubbing = false
+    }
+
+
 }
 
 // MARK: - Mini lyrics (compact now-playing)
@@ -3169,5 +3314,1193 @@ struct MiniLyricsView: View {
             .padding(.horizontal, 28)
             .id(line?.id)
             .transition(.opacity.combined(with: .move(edge: .bottom)))
+    }
+}
+
+
+// Coda portrait player members, copied verbatim from Coda's
+// Features/Player/NowPlayingView.swift (AGPL-3.0; license headers kept
+// on the files they came from). Seams adapted afterwards are marked SEAM.
+//
+// NOTE: Coda calls the reduce-motion environment value reducePlayerMotion;
+// HAo's NowPlayingView already names it reduceMotion, so the extract renames
+// that one token mechanically. Everything else is byte-identical.
+extension NowPlayingView {
+    /// Slider dimensions shared across devices; the iPhone also uses this spacing rhythm.
+    private struct ControlMetrics {
+        let scale: CGFloat
+        init(width: CGFloat) { scale = min(1.15, max(0.95, width / 356)) }
+        init(scale: CGFloat) { self.scale = scale }
+        var progressHeight: CGFloat { 52 * scale }
+        var progressGap: CGFloat { 24 * scale }
+        var transportHeight: CGFloat { 82 * scale }
+        var transportGap: CGFloat { 36 * scale }
+        var volumeHeight: CGFloat { 32 * scale }
+        var utilityGap: CGFloat { 4 * scale }
+        var utilityHeight: CGFloat { 50 * scale }
+        var trackHeight: CGFloat { 7 * scale }
+        var totalHeight: CGFloat { 280 * scale }
+    }
+
+    private func playbackControls<Utility: View>(width: CGFloat, animated: Bool = false,
+                                                 metrics: ControlMetrics? = nil,
+                                                 @ViewBuilder utility: () -> Utility) -> some View {
+        let metrics = metrics ?? ControlMetrics(width: width)
+        return VStack(spacing: 0) {
+            controlLayer(animated: animated, offset: 180, showDelay: 0.025, hideDelay: 0.075) {
+                NowPlayingScrubber(showsRemainingTime: true, rowHeight: metrics.progressHeight,
+                                   trackHeight: metrics.trackHeight)
+            }
+            Color.clear.frame(height: metrics.progressGap)
+            controlLayer(animated: animated, offset: 165, showDelay: 0.05, hideDelay: 0.05) {
+                PlayerTransportControls(width: width, height: metrics.transportHeight)
+            }
+            Color.clear.frame(height: metrics.transportGap)
+            controlLayer(animated: animated, offset: 148, showDelay: 0.075, hideDelay: 0.025) {
+                volumeControl(rowHeight: metrics.volumeHeight, trackHeight: metrics.trackHeight)
+            }
+            Color.clear.frame(height: metrics.utilityGap)
+            controlLayer(animated: animated, offset: 128, showDelay: 0.10, hideDelay: 0) {
+                utility().frame(height: metrics.utilityHeight)
+            }
+        }
+        .frame(width: width)
+        .fixedSize(horizontal: false, vertical: true)
+    }
+
+    @ViewBuilder
+    private func controlLayer<Content: View>(animated: Bool, offset: CGFloat,
+                                             showDelay: Double, hideDelay: Double,
+                                             @ViewBuilder content: () -> Content) -> some View {
+        #if os(iOS)
+        if animated {
+            portraitControlLayer(offset: offset, showDelay: showDelay, hideDelay: hideDelay, content: content)
+        } else {
+            content()
+        }
+        #else
+        content()
+        #endif
+    }
+
+    private func usesPortraitLayout(size: CGSize) -> Bool {
+        #if os(iOS)
+        return size.width < 600 || size.height > size.width
+        #else
+        return false
+        #endif
+    }
+
+    private func singleColumnTrackHeader(width: CGFloat) -> some View {
+        HStack(spacing: 12) {
+            #if os(iOS)
+            portraitArtworkLink(size: 72, expanded: false)
+            #else
+            artworkView(size: 72, cornerRadius: 12)
+            #endif
+            NowPlayingTrackInfoRow(
+                onOpenDestination: openTrackDestination,
+                largeMetadata: true,
+                usesPortraitHeaderSizing: true,
+                movesMoreToDeviceRow: true,
+                showsMoreBesideFavorite: true,
+                metadataWidth: max(0, width - 72 - 12 - (player.currentTrack == nil ? 0 : 132 + 3 * Theme.Spacing.small)),
+                onAddToPlaylist: togglePlaylistPanel,
+                // SEAM: HAo-only — opens the sound-effects sheet.
+                onOpenSoundEffects: { showSoundEffects = true }
+            )
+            .frame(maxWidth: .infinity)
+        }
+        .frame(width: width)
+        .frame(minHeight: max(72, iPadMetadataHeight))
+        .fixedSize(horizontal: false, vertical: true)
+    }
+
+    #if os(iOS)
+    /// Shared vertical composition for iPad portrait and iPhone. The viewport
+    /// reuses the landscape panels while the controls keep their own space.
+    private func portraitLayout(size: CGSize) -> some View {
+        portraitControlsAutoHide(portraitLayoutContent(size: size), showsArtwork: portraitShowsArtwork)
+    }
+
+    private var portraitShowsArtwork: Bool {
+        !showsSingleColumnLyrics && iPadPanel == .lyrics && playlistTrack == nil
+    }
+
+    /// The playback controls float over the lyrics and fade out after 3s of
+    /// inactivity while playing. Shared by iPhone portrait and landscape.
+    private func portraitControlsAutoHide<Content: View>(_ content: Content, showsArtwork: Bool) -> some View {
+        content
+            .onPreferenceChange(PortraitControlsHeightKey.self) { height in
+                if height > 0 { portraitControlsHeight = height }
+            }
+            // Rotation swaps the layout subtree; keep the remembered collapse
+            // state and only restart the idle timer. Artwork mode always shows them.
+            .onAppear {
+                if showsArtwork { registerPortraitControlsActivity() } else { restartPortraitControlsIdleTimer() }
+            }
+            .onChange(of: player.showNowPlaying) { shown in
+                if shown { registerPortraitControlsActivity() }
+            }
+            .onChange(of: iPadPanel) { _ in registerPortraitControlsActivity() }
+            .onChange(of: playlistTrack?.id) { _ in registerPortraitControlsActivity() }
+            .onChange(of: usesPortraitLyricsInterface) { usesLyrics in
+                // A track change clears lyrics while the next ones load; keep
+                // collapsed controls hidden then. Reveal only for a song without lyrics.
+                if usesLyrics || player.lyrics == nil {
+                    restartPortraitControlsIdleTimer()
+                } else {
+                    registerPortraitControlsActivity()
+                }
+            }
+            .onChange(of: player.currentTrack?.id) { _ in restartPortraitControlsIdleTimer() }
+            .onChange(of: player.isPlaying) { _ in registerPortraitControlsActivity() }
+            .onChange(of: playerVoiceOverEnabled) { _ in registerPortraitControlsActivity() }
+            .task(id: portraitControlsActivityGeneration) {
+                // SEAM (chen 2026-11-26): no auto-hide — the controls stay
+                // visible in lyrics mode. Coda hides them after 3s of
+                // inactivity while playing; that behaviour is deliberately
+                // not copied. Tap-to-toggle still works via
+                // togglePortraitControlsFromTap.
+                return
+            }
+    }
+
+    private func portraitLayoutContent(size: CGSize) -> some View {
+        let isNarrow = size.width < 600
+        let inset: CGFloat = isNarrow ? 24 : min(72, size.width * 0.06)
+        let width = max(0, min(size.width - inset * 2, 960))
+        // The header and panels share the progress bar's width, as on Mac.
+        let contentWidth = portraitControlsWidth(availableWidth: width)
+        let showsFullControls = iPadPanel == .lyrics && playlistTrack == nil
+        let showsArtwork = !showsSingleColumnLyrics && showsFullControls
+        let lyricsVisible = !showsArtwork && portraitLyricsEntrancePresented
+        let trackID = player.currentTrack?.id
+        let lyricsPrepared = player.lyrics?.isEmpty != false || portraitPreparedLyricsTrackID == trackID
+        return ZStack(alignment: .bottom) {
+            // Keep the lyric viewport alive across artwork toggles. Recreating
+            // its native text hosts during the transition stalls the first frames.
+            VStack(spacing: isNarrow ? Theme.Spacing.small : Theme.Spacing.component) {
+                singleColumnTrackHeader(width: contentWidth)
+                .offset(y: showsArtwork && !reduceMotion ? 40 : 0)
+                .opacity(showsArtwork ? 0 : 1)
+                .animation(PortraitPageMotion.header(presented: !showsArtwork, reduced: reduceMotion),
+                           value: showsArtwork)
+
+                playbackContentPanel
+                    .environment(\.nowPlayingLyricsPresented, !showsArtwork)
+                    .environment(\.nowPlayingLyricsInitialFocusPrepared, {
+                        guard player.currentTrack?.id == trackID else { return }
+                        portraitPreparedLyricsTrackID = trackID
+                    })
+                    .environment(\.nowPlayingLyricsInterface, usesPortraitLyricsInterface ? NowPlayingLyricsInterface(
+                        isVisible: !portraitControlsCollapsed,
+                        bottomOverlayHeight: portraitControlsHeight,
+                        onVisibilityChange: { setPortraitControlsVisible($0) },
+                        onInteraction: togglePortraitControlsFromTap
+                    ) : nil)
+                    .padding(.bottom, usesPortraitLyricsInterface ? 0 : portraitControlsHeight)
+                    // As on Mac, lyrics, comments, queue and playlist panels
+                    // start at the header's leading edge with no own gutter.
+                    .environment(\.nowPlayingFlushPanelEdges, true)
+                    .overlay(alignment: .bottomTrailing) {
+                        if iPadPanel == .lyrics && playlistTrack == nil {
+                            iPadLyricsAnnotationButtons
+                                .offset(y: portraitControlsCollapsed ? 64 : -portraitControlsHeight)
+                                .scaleEffect(portraitControlsCollapsed ? 0.82 : 1)
+                                .opacity(portraitControlsCollapsed ? 0 : 1)
+                                .allowsHitTesting(!portraitControlsCollapsed)
+                                .accessibilityHidden(portraitControlsCollapsed)
+                                .animation(portraitInterfaceAnimation(duration: 0.24,
+                                    delay: portraitControlsCollapsed ? 0.10 : 0), value: portraitControlsCollapsed)
+                        }
+                    }
+                    .layoutPriority(-1)
+                    .scaleEffect(!lyricsVisible && !reduceMotion ? 0.90 : 1)
+                    .animation(PortraitPageMotion.lyricsSpatial(reduced: reduceMotion), value: lyricsVisible)
+                    .opacity(lyricsVisible ? 1 : 0)
+                    .animation(PortraitPageMotion.opacity(reduced: reduceMotion), value: lyricsVisible)
+            }
+            .frame(width: contentWidth)
+            .allowsHitTesting(!showsArtwork)
+            .accessibilityHidden(showsArtwork)
+
+            portraitArtworkContent(width: width)
+                .offset(y: showsArtwork || reduceMotion ? 0 : -300)
+                .opacity(showsArtwork ? 1 : 0)
+                .allowsHitTesting(showsArtwork)
+                .accessibilityHidden(!showsArtwork)
+                .animation(reduceMotion ? nil : PortraitPageMotion.smooth(
+                    duration: showsArtwork ? 0.22 : 0.24).delay(showsArtwork ? 0.07 : 0), value: showsArtwork)
+
+            // One controls tree remains in place for both content presentations.
+            Group {
+                if showsFullControls {
+                    portraitPlaybackControls(width: width, allowsArtwork: true)
+                } else {
+                    portraitUtilityBar(allowsArtwork: true)
+                        .frame(width: portraitControlsWidth(availableWidth: width),
+                               height: ControlMetrics(width: portraitControlsWidth(availableWidth: width)).utilityHeight)
+                }
+            }
+            .background {
+                GeometryReader { controls in
+                    Color.clear.preference(key: PortraitControlsHeightKey.self, value: controls.size.height)
+                }
+            }
+            .allowsHitTesting(!showsFullControls || !portraitControlsCollapsed)
+            .accessibilityHidden(showsFullControls && portraitControlsCollapsed)
+        }
+        .frame(width: width)
+        .background {
+            portraitArtworkContent(width: width, measuresArtwork: true)
+                .hidden()
+                .allowsHitTesting(false)
+                .accessibilityHidden(true)
+        }
+        .overlay {
+            portraitSharedArtwork(expanded: showsArtwork, headerLeading: (width - contentWidth) / 2)
+        }
+        .coordinateSpace(name: "NowPlayingPortraitArtwork")
+        .onPreferenceChange(PortraitArtworkFrameKey.self) { frame in
+            guard frame.width > 0, frame.height > 0,
+                  frame.minX.isFinite, frame.minY.isFinite,
+                  frame.width.isFinite, frame.height.isFinite else { return }
+            if abs(frame.minX - portraitArtworkPageFrame.minX) > 0.5
+                || abs(frame.minY - portraitArtworkPageFrame.minY) > 0.5
+                || abs(frame.width - portraitArtworkPageFrame.width) > 0.5
+                || abs(frame.height - portraitArtworkPageFrame.height) > 0.5 {
+                portraitArtworkPageFrame = frame
+            }
+        }
+        .padding(.top, UIDevice.current.userInterfaceIdiom == .pad ? 64 : 34)
+        .padding(.bottom, 8)
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .clipped()
+        .onChange(of: showsArtwork) { expanded in
+            registerPortraitControlsActivity()
+            if expanded {
+                portraitLyricsExitStartedAt = .now
+                portraitLyricsEntrancePresented = false
+                portraitLyricsEntranceStartedAt = nil
+            } else {
+                // Reversing an unfinished exit continues immediately.
+                let reversesExit = portraitLyricsExitStartedAt.map {
+                    $0.duration(to: .now) < .seconds(0.18)
+                } ?? false
+                portraitLyricsEntrancePresented = reversesExit || reduceMotion
+                portraitLyricsEntranceStartedAt = .now
+            }
+        }
+        .task(id: PortraitLyricsEntranceID(expanded: showsArtwork, trackID: trackID, prepared: lyricsPrepared)) {
+            guard !showsArtwork, !portraitLyricsEntrancePresented else { return }
+            await Task.yield()
+            let start = portraitLyricsEntranceStartedAt ?? .now
+            let deadline = start.advanced(by: .seconds(reduceMotion ? 0 : lyricsPrepared ? 0.07 : 0.35))
+            do {
+                let remaining = ContinuousClock.now.duration(to: deadline)
+                if remaining > .zero { try await Task.sleep(for: remaining) }
+                try Task.checkCancellation()
+            } catch { return }
+            portraitLyricsEntrancePresented = true
+        }
+        .accessibilityIdentifier("portraitNowPlaying")
+    }
+
+    /// Artwork occupies the space above metadata and the same playback controls.
+    /// Its size follows the available height so small phones keep every control reachable.
+    private func portraitArtworkContent(width: CGFloat, measuresArtwork: Bool = false) -> some View {
+        GeometryReader { available in
+            let controlsWidth = portraitControlsWidth(availableWidth: width)
+            let metrics = ControlMetrics(width: controlsWidth)
+            let controlsHeight = metrics.progressHeight + metrics.progressGap
+                + metrics.transportHeight + metrics.transportGap
+                + metrics.volumeHeight + metrics.utilityGap + metrics.utilityHeight
+            let coverSize = max(0, min(width,
+                available.size.height - controlsHeight - iPadMetadataHeight - 32))
+            VStack(spacing: 0) {
+                portraitArtworkLink(size: coverSize, expanded: true)
+                    .background {
+                        if measuresArtwork {
+                            GeometryReader { geometry in
+                                Color.clear.preference(key: PortraitArtworkFrameKey.self,
+                                    value: geometry.frame(in: .named("NowPlayingPortraitArtwork")))
+                            }
+                        }
+                    }
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+                NowPlayingTrackInfoRow(
+                    onOpenDestination: openTrackDestination,
+                    largeMetadata: true,
+                    usesPortraitHeaderSizing: true,
+                    movesMoreToDeviceRow: true,
+                    showsMoreBesideFavorite: true,
+                    metadataWidth: max(0, controlsWidth - portraitMetadataActionsWidth),
+                    onAddToPlaylist: togglePlaylistPanel,
+                    // SEAM: HAo-only — opens the sound-effects sheet.
+                    onOpenSoundEffects: { showSoundEffects = true }
+                )
+                .frame(width: controlsWidth, alignment: .leading)
+                .frame(minHeight: iPadMetadataHeight)
+                .fixedSize(horizontal: false, vertical: true)
+                .padding(.top, 20)
+                .padding(.bottom, 12)
+                Color.clear.frame(height: controlsHeight)
+                    .accessibilityHidden(true)
+            }
+            .frame(width: width, height: available.size.height)
+        }
+    }
+
+    /// One overlay travels between the stationary artwork-page measurement and
+    /// the 72pt song header; page details animate independently underneath it.
+    @ViewBuilder
+    private func portraitSharedArtwork(expanded: Bool, headerLeading: CGFloat) -> some View {
+        if portraitArtworkPageFrame.width > 0 {
+            let frame = expanded ? portraitArtworkPageFrame : CGRect(x: headerLeading, y: 0, width: 72, height: 72)
+            let pausedInset = expanded && !player.isPlaying ? frame.width * (1 - 0.74) / 2 : 0
+            let displayedFrame = frame.insetBy(dx: pausedInset, dy: pausedInset)
+            NowPlayingPortraitArtwork(image: artworkImage, isArtworkPage: expanded, isPlaying: player.isPlaying)
+                .frame(width: displayedFrame.width, height: displayedFrame.height)
+                .position(x: displayedFrame.midX, y: displayedFrame.midY)
+                .animation(PortraitPageMotion.artwork(reduced: reduceMotion), value: expanded)
+                .animation(reduceMotion ? nil : PortraitPageMotion.smooth(duration: 0.48),
+                           value: player.isPlaying)
+                .allowsHitTesting(false)
+                .accessibilityHidden(true)
+        }
+    }
+
+    @ViewBuilder
+    private func portraitArtworkLink(size: CGFloat, expanded: Bool) -> some View {
+        if let album = player.currentTrack?.album, album.id != 0 {
+            Button {
+                openTrackDestination(.album(album.id))
+            } label: {
+                Color.clear
+                    .frame(width: size, height: size)
+                    .contentShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+            }
+            .buttonStyle(.plain)
+            .noFocusRing()
+            .accessibilityLabel("打开专辑：\(album.name)")
+            .accessibilityIdentifier(expanded ? "portraitLargeArtwork" : "portraitSmallArtwork")
+        } else {
+            Color.clear.frame(width: size, height: size)
+                .allowsHitTesting(false)
+                .accessibilityHidden(true)
+        }
+    }
+
+    private var portraitMetadataActionsWidth: CGFloat {
+        player.currentTrack == nil ? 0 : 132 + 3 * Theme.Spacing.small
+    }
+
+    private var usesPortraitLyricsInterface: Bool {
+        iPadPanel == .lyrics && playlistTrack == nil && player.lyrics?.isEmpty == false
+    }
+
+    private func portraitControlsWidth(availableWidth: CGFloat) -> CGFloat {
+        UIDevice.current.userInterfaceIdiom == .pad
+            ? max(0, availableWidth) : max(0, min(availableWidth - 16, 420))
+    }
+
+    private func portraitPlaybackControls(width: CGFloat, allowsArtwork: Bool,
+                                          metrics: ControlMetrics? = nil) -> some View {
+        let controlsWidth = portraitControlsWidth(availableWidth: width)
+        return playbackControls(width: controlsWidth, animated: true, metrics: metrics) {
+            portraitUtilityBar(allowsArtwork: allowsArtwork)
+        }
+        .background {
+            Color.clear.contentShape(Rectangle()).onTapGesture {}
+        }
+        .background {
+            NowPlayingControlsTouchObserver(isEnabled: !portraitControlsCollapsed) { active in
+                portraitControlsInteractionActive = active
+            }
+        }
+        .onChange(of: portraitControlsInteractionActive) { _ in
+            // Cancel the pending hide on touch-down; start a fresh idle interval
+            // on release (including gesture cancellation), even after a long hold.
+            registerPortraitControlsActivity()
+        }
+    }
+
+    private func portraitControlLayer<Content: View>(
+        offset: CGFloat, showDelay: Double, hideDelay: Double,
+        @ViewBuilder content: () -> Content
+    ) -> some View {
+        content()
+            .offset(y: portraitControlsCollapsed && !reduceMotion ? offset : 0)
+            .opacity(portraitControlsCollapsed ? 0 : 1)
+            .animation(portraitInterfaceAnimation(duration: 0.24,
+                delay: portraitControlsCollapsed ? hideDelay : showDelay), value: portraitControlsCollapsed)
+    }
+
+    private func portraitInterfaceAnimation(duration: Double, delay: Double = 0) -> Animation? {
+        guard !reduceMotion else { return nil }
+        if #available(iOS 17, *) {
+            return .smooth(duration: duration).delay(delay)
+        }
+        // SwiftUI's smooth spring is unavailable on the deployment target.
+        return .timingCurve(0.4, 0, 0.2, 1, duration: duration).delay(delay)
+    }
+
+    private func registerPortraitControlsActivity() {
+        portraitControlsActivityGeneration &+= 1
+        withAnimation(portraitInterfaceAnimation(duration: 0.34)) {
+            portraitControlsCollapsed = false
+        }
+    }
+
+    /// Restarts the 3s idle interval without revealing collapsed controls.
+    private func restartPortraitControlsIdleTimer() {
+        portraitControlsActivityGeneration &+= 1
+    }
+
+    /// A tap on blank lyric space toggles the controls. Hiding by hand also
+    /// works while paused; VoiceOver keeps them visible.
+    private func togglePortraitControlsFromTap() {
+        guard !portraitControlsCollapsed, usesPortraitLyricsInterface, !playerVoiceOverEnabled,
+              !portraitControlsInteractionActive else {
+            registerPortraitControlsActivity()
+            return
+        }
+        portraitControlsActivityGeneration &+= 1
+        withAnimation(portraitInterfaceAnimation(duration: 0.34)) {
+            portraitControlsCollapsed = true
+        }
+    }
+
+    private func setPortraitControlsVisible(_ visible: Bool) {
+        if visible {
+            registerPortraitControlsActivity()
+        } else {
+            guard player.isPlaying, usesPortraitLyricsInterface, !playerVoiceOverEnabled,
+                  !portraitControlsCollapsed, !portraitControlsInteractionActive else { return }
+            portraitControlsActivityGeneration &+= 1
+            withAnimation(portraitInterfaceAnimation(duration: 0.34)) {
+                portraitControlsCollapsed = true
+            }
+        }
+    }
+
+    private func portraitUtilityBar(allowsArtwork: Bool) -> some View {
+        HStack(spacing: 0) {
+            CurrentPlaybackDeviceButton()
+                .layoutPriority(-1)
+            Spacer(minLength: 12)
+            HStack(spacing: Theme.Spacing.small) {
+                iPadPanelButton("text.bubble", label: "歌曲评论", selected: iPadPanel == .comments && playlistTrack == nil) {
+                    // SEAM: HAo has no SongCommentsStore; iPadComments is a
+                    // track-id token (Int?) marking which track's comments
+                    // are open. The panel renders HAo's SongCommentsView.
+                    if let track = player.currentTrack, iPadComments != track.id {
+                        iPadComments = track.id
+                    }
+                    iPadPanel = iPadPanel == .comments && playlistTrack == nil ? .lyrics : .comments
+                    playlistTrack = nil
+                }
+                .disabled(player.currentTrack == nil)
+                iPadPanelButton("list.bullet", label: "待播清单", selected: iPadPanel == .queue && playlistTrack == nil) {
+                    iPadPanel = iPadPanel == .queue && playlistTrack == nil ? .lyrics : .queue
+                    playlistTrack = nil
+                }
+                iPadPanelButton("quote.bubble", label: "歌词",
+                                selected: iPadPanel == .lyrics && playlistTrack == nil
+                                    && (!allowsArtwork || showsSingleColumnLyrics)) {
+                    // Only the resident page layers animate. Do not propagate
+                    // a layout animation into the lyric glyphs or volume slider.
+                    var transaction = Transaction(animation: nil)
+                    transaction.disablesAnimations = true
+                    withTransaction(transaction) {
+                        portraitControlsCollapsed = false
+                    }
+                    if allowsArtwork {
+                        showsSingleColumnLyrics = iPadPanel == .lyrics && playlistTrack == nil
+                            ? !showsSingleColumnLyrics : true
+                    }
+                    playlistTrack = nil
+                    iPadPanel = .lyrics
+                }
+                .accessibilityValue(iPadPanel == .lyrics && playlistTrack == nil
+                    && (!allowsArtwork || showsSingleColumnLyrics) ? "已显示" : "已收起")
+                .accessibilityHint(allowsArtwork ? "切换歌词与大封面" : "显示歌词")
+                .accessibilityIdentifier("portraitLyricsToggle")
+            }
+            .fixedSize(horizontal: true, vertical: false)
+        }
+    }
+
+    #endif
+
+    private var playbackContentPanel: some View {
+        ZStack {
+            if let track = playlistTrack {
+                NowPlayingAddToPlaylistColumn(track: track) { playlistTrack = nil }
+                    .id(track.id)
+                    .transition(.opacity)
+            } else if iPadPanel == .comments, let track = player.currentTrack,
+               iPadComments == track.id {
+                // SEAM: HAo's own comments view (load + like), not Coda's
+                // SongCommentsColumn/SongCommentsStore — those need a
+                // differently-shaped comment model and send/delete endpoints
+                // HAo's API wrapper does not have. onClose returns to lyrics
+                // (the view's own xmark has no sheet to dismiss here).
+                SongCommentsView(track: track, onClose: { iPadPanel = .lyrics })
+                    .id(track.id)
+                    .transition(.opacity)
+            } else if iPadPanel == .queue {
+                IOSInlinePlaybackQueueView()
+                    .transition(.opacity)
+            } else if hasLyricsColumn || player.lyrics?.isInstrumental == true {
+                portraitLyricsColumn
+                    .transition(.opacity)
+            } else {
+                VStack(spacing: Theme.Spacing.control) {
+                    Image(systemName: "quote.bubble")
+                        .font(.system(size: 32, weight: .light))
+                    Text("暂无歌词")
+                        .font(.subheadline)
+                }
+                .foregroundStyle(.white.opacity(0.5))
+            }
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .animation(.easeInOut(duration: 0.24), value: iPadPanel)
+        .animation(.easeInOut(duration: 0.24), value: playlistTrack?.id)
+    }
+
+    private func togglePlaylistPanel() {
+        playlistTrack = playlistTrack == nil ? player.currentTrack : nil
+    }
+
+    private var iPadLyricsAnnotationButtons: some View {
+        VStack(spacing: Theme.Spacing.small) {
+            lyricsAnnotationButtonContents
+        }
+    }
+
+    @ViewBuilder
+    private var lyricsAnnotationButtonContents: some View {
+        if hasLyricsRomaji {
+            iPadPanelButton("", label: "罗马音",
+                            selected: settings.lyricsAnnotation == .romaji,
+                            customIcon: Image("LyricsRomaji").renderingMode(.template)) {
+                settings.lyricsAnnotation = settings.lyricsAnnotation == .romaji ? .off : .romaji
+            }
+            .accessibilityValue(settings.lyricsAnnotation == .romaji ? "已显示" : "已隐藏")
+            .accessibilityHint("切换罗马音的显示")
+            .accessibilityIdentifier("iPadLyricsRomajiButton")
+        }
+        if hasLyricsTranslation {
+            iPadPanelButton("translate", label: "歌词翻译",
+                            selected: settings.showLyricsTranslation,
+                            customIcon: Image("LyricsLanguages").renderingMode(.template)) {
+                settings.showLyricsTranslation.toggle()
+            }
+            .accessibilityValue(settings.showLyricsTranslation ? "已显示" : "已隐藏")
+            .accessibilityHint("切换歌词翻译的显示")
+            .accessibilityIdentifier("iPadLyricsTranslationButton")
+        }
+    }
+
+    private var hasLyricsRomaji: Bool {
+        player.lyrics?.lines.contains { line in
+            guard let romaji = line.romaji else { return false }
+            return !romaji.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+        } == true
+    }
+
+    private var hasLyricsTranslation: Bool {
+        player.lyrics?.lines.contains { line in
+            guard let translation = line.translation else { return false }
+            return !translation.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+        } == true
+    }
+
+    private func iPadPanelButton(_ icon: String, label: String, selected: Bool,
+                                 customIcon: Image? = nil,
+                                 action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            Group {
+                if let customIcon {
+                    customIcon.resizable()
+                        .scaledToFit()
+                        .frame(width: 28, height: 20)
+                } else {
+                    Image(systemName: icon)
+                        .font(.system(size: 20, weight: .medium))
+                }
+            }
+                .foregroundStyle(.white.opacity(selected ? 1 : 0.65))
+                .frame(width: 44, height: 44)
+                .background {
+                    RoundedRectangle(cornerRadius: 10, style: .continuous)
+                        .fill(.white.opacity(selected ? 0.16 : 0))
+                        .padding(3)
+                }
+                .contentShape(Rectangle())
+        }
+        .buttonStyle(.pressable)
+        .animation(reduceMotion ? nil : .easeInOut(duration: 0.2), value: selected)
+        .accessibilityLabel(label)
+        .accessibilityAddTraits(selected ? [.isSelected] : [])
+    }
+
+    private func volumeControl(rowHeight: CGFloat,
+                               trackHeight: CGFloat = NowPlayingSliderStyle.trackHeight) -> some View {
+        HStack(spacing: Theme.Spacing.control) {
+            Image(systemName: "speaker.fill").font(.system(size: 13))
+            #if os(iOS) && !targetEnvironment(simulator)
+            IOSSystemVolumeSlider(trackHeight: trackHeight, showsLevelIcon: true).frame(height: rowHeight)
+            #else
+            // The simulator has no system volume route (MPVolumeView shows
+            // "No Volume Available"), so drive the in-app gain there instead.
+            PlayerSlider(fraction: Double(player.volume), trackHeight: trackHeight,
+                         onChanged: { player.volume = Float($0) },
+                         onEnded: { player.volume = Float($0) })
+                .frame(height: rowHeight)
+            PlayerVolumeIcon(volume: Double(player.volume))
+            #endif
+        }
+        .foregroundStyle(.white.opacity(0.6))
+        .frame(height: rowHeight)
+    }
+
+    // MARK: - Lyrics column (renamed: HAo's NowPlayingView already has a
+    // lyricsColumn; this is Coda's, verbatim apart from the name)
+
+    @ViewBuilder
+    private var portraitLyricsColumn: some View {
+        if let lyrics = player.lyrics, !lyrics.isEmpty {
+            AppleMusicLyricsColumn(lyrics: lyrics)
+                .id(player.currentTrack?.id)
+        } else if player.lyrics?.isInstrumental == true {
+            VStack(spacing: 10) {
+                Image(systemName: "music.quarternote.3")
+                    .font(.system(size: 36, weight: .light))
+                    .foregroundStyle(.white.opacity(0.4))
+                Text("纯音乐，请欣赏")
+                    .font(.system(size: 15))
+                    .foregroundStyle(.white.opacity(0.6))
+            }
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+        } else if player.lyrics != nil {
+            Text("暂无歌词")
+                .foregroundStyle(.white.opacity(0.6))
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+        } else {
+            VStack(spacing: Theme.Spacing.control) {
+                #if os(iOS)
+                if player.lyricsLoadFailed {
+                    Text("歌词加载失败")
+                        .foregroundStyle(.white.opacity(0.6))
+                    Button("重新加载") {
+                        Task { await player.loadCurrentLyricsIfNeeded() }
+                    }
+                    .buttonStyle(.bordered)
+                    .tint(.white)
+                } else {
+                    ProgressView().controlSize(.small).tint(.white)
+                }
+                #else
+                ProgressView().controlSize(.small).tint(.white)
+                #endif
+            }
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+        }
+    }
+
+    private func openTrackDestination(_ destination: Destination) {
+        #if os(iOS)
+        if UIDevice.current.userInterfaceIdiom == .pad,
+           player.showNowPlaying,
+           let dismissThen = dismissNowPlayingThenAction {
+            // SEAM: HAo's key is the same shape as Coda's (a closure that runs
+            // the action after dismissing); no provider is wired yet, so this
+            // branch never runs and navigation falls through below.
+            dismissThen { onOpenDestination(destination) }
+            return
+        }
+        #endif
+        onOpenDestination(destination)
+    }
+
+}
+
+
+// Coda portrait player top-level types, copied verbatim from Coda's
+// Features/Player/NowPlayingView.swift (AGPL-3.0).
+#if os(iOS)
+// SPDX-License-Identifier: GPL-3.0-only
+// Motion adapted from youshen2/MeloX at 09713edb847a0f0a3515a34f779cc630d4fe5985:
+// NowPlayingMotionSpec.swift and the shared overlay in NowPlayingView.swift.
+// See ThirdPartyNotices/MeloX.md for iOS 16 and renderer adaptations.
+private enum PortraitPageMotion {
+    static func artwork(reduced: Bool) -> Animation? {
+        guard !reduced else { return nil }
+        return smooth(duration: 0.30)
+    }
+
+    static func lyricsSpatial(reduced: Bool) -> Animation? {
+        guard !reduced else { return nil }
+        return .interpolatingSpring(mass: 1, stiffness: 350, damping: 40, initialVelocity: 0)
+    }
+
+    static func opacity(reduced: Bool) -> Animation? {
+        reduced ? nil : .timingCurve(0.42, 0, 0.58, 1, duration: 0.18)
+    }
+
+    static func header(presented: Bool, reduced: Bool) -> Animation? {
+        guard !reduced else { return nil }
+        return smooth(duration: presented ? 0.40 : 0.24).delay(presented ? 0.08 : 0)
+    }
+
+    static func smooth(duration: Double) -> Animation {
+        if #available(iOS 17, *) { return .smooth(duration: duration) }
+        // No-bounce spring fallback for the physical iPad on iPadOS 16.
+        return .spring(response: duration, dampingFraction: 1)
+    }
+}
+#endif
+
+// MARK: - Track info row
+
+private struct NowPlayingTrackInfoRow: View {
+    @EnvironmentObject private var player: PlayerService
+    @EnvironmentObject private var account: AccountStore
+    @Environment(\.playlistPanelSelected) private var playlistPanelSelected
+    @State private var showAddToPlaylist = false
+    let onOpenDestination: (Destination) -> Void
+    var metadataOnly = false
+    var actionsOnly = false
+    var largeMetadata = false
+    var usesPortraitHeaderSizing = false
+    var movesMoreToDeviceRow = false
+    var showsMoreBesideFavorite = false
+    var metadataWidth: CGFloat? = nil
+    var onAddToPlaylist: (() -> Void)? = nil
+    // SEAM: HAo-only. Opens the sound-effects sheet (chen 2026-11-26: the EQ
+    // lives in this row's "..." menu). Threaded through to the more menu.
+    var onOpenSoundEffects: (() -> Void)? = nil
+
+    var body: some View {
+        Group {
+            if metadataOnly {
+                metadata(alignment: .center, textAlignment: .center)
+                    .padding(.horizontal, 48)
+            } else if actionsOnly {
+                if let track = player.currentTrack {
+                    HStack {
+                        favoriteButton(for: track)
+                        Spacer()
+                        NowPlayingTrackMoreMenu(track: track, onOpenDestination: onOpenDestination,
+                                               onOpenSoundEffects: onOpenSoundEffects)
+                    }
+                }
+            } else {
+                HStack(spacing: Theme.Spacing.small) {
+                    metadata(alignment: .leading, textAlignment: .leading)
+                        .frame(width: metadataWidth, alignment: .leading)
+                        .clipped()
+                        .frame(maxWidth: .infinity, alignment: .leading)
+
+                    if let track = player.currentTrack {
+                        if movesMoreToDeviceRow {
+                            addToPlaylistButton
+                        }
+                        favoriteButton(for: track)
+                        if !movesMoreToDeviceRow || showsMoreBesideFavorite {
+                            NowPlayingTrackMoreMenu(track: track, onOpenDestination: onOpenDestination,
+                                                  onOpenSoundEffects: onOpenSoundEffects)
+                        }
+                    }
+                }
+            }
+        }
+        .sheet(isPresented: $showAddToPlaylist) {
+            if let track = player.currentTrack {
+                AddToPlaylistSheet(track: track)
+            }
+        }
+    }
+
+    private func metadata(
+        alignment: HorizontalAlignment,
+        textAlignment: TextAlignment
+    ) -> some View {
+        VStack(alignment: alignment, spacing: usesPortraitHeaderSizing ? 2 : Theme.Spacing.tight) {
+            HStack(spacing: 6) {
+                Text(player.currentTrack?.name ?? "")
+                    .font(usesPortraitHeaderSizing ? .title3.weight(.semibold) : (largeMetadata ? Theme.Typography.cardTitle : Theme.Typography.trackTitle))
+                    .foregroundStyle(.white)
+                    .lineLimit(1)
+            }
+            if let track = player.currentTrack {
+                NowPlayingTrackDestinationLinks(
+                    track: track,
+                    font: usesPortraitHeaderSizing ? .title3 : Theme.Typography.secondary,
+                    color: .white.opacity(0.62),
+                    onOpenDestination: onOpenDestination
+                )
+            }
+        }
+        .multilineTextAlignment(textAlignment)
+        .accessibilityElement(children: .contain)
+        .accessibilityIdentifier("immersiveTrackMetadata")
+    }
+
+    private var addToPlaylistButton: some View {
+        Button {
+            if let onAddToPlaylist { onAddToPlaylist() }
+            else { showAddToPlaylist = true }
+        } label: {
+            Image("PlaylistAdd")
+                .renderingMode(.template)
+                .resizable()
+                .scaledToFit()
+                .frame(width: 22, height: 22)
+                .foregroundStyle(.white)
+                .frame(width: 44, height: 44)
+                .background {
+                    RoundedRectangle(cornerRadius: 10, style: .continuous)
+                        .fill(.white.opacity((playlistPanelSelected || showAddToPlaylist) ? 0.16 : 0))
+                        .padding(3)
+                }
+                .contentShape(Rectangle())
+        }
+        .buttonStyle(.pressable)
+        .accessibilityAddTraits((playlistPanelSelected || showAddToPlaylist) ? .isSelected : [])
+        .accessibilityLabel("添加到歌单")
+        .accessibilityIdentifier("iPadAddToPlaylistButton")
+    }
+
+    private func favoriteButton(for track: Track) -> some View {
+        PlayerFavoriteButton(trackID: track.id, size: 22, side: 44, tint: .white)
+            .accessibilityIdentifier("immersiveFavoriteButton")
+    }
+}
+
+struct NowPlayingTrackMoreMenu: View {
+    @EnvironmentObject private var player: PlayerService
+    let track: Track
+    var tint: Color = .white.opacity(0.88)
+    var accessibilityID = "immersiveMoreMenu"
+    var showsLyricsAdjustment = true
+    var showsPlaybackControls = false
+    var showsPlaybackPanels = false
+    var usesPortraitStyle = true
+    var onAddToPlaylist: (() -> Void)? = nil
+    var onOpenDestination: ((Destination) -> Void)? = nil
+    // SEAM: HAo-only (see NowPlayingTrackInfoRow above).
+    var onOpenSoundEffects: (() -> Void)? = nil
+    @EnvironmentObject private var account: AccountStore
+
+    #if os(macOS)
+    @EnvironmentObject private var settings: SettingsManager
+    @State private var showsMorePopover = false
+    #endif
+
+    var body: some View {
+        #if os(macOS)
+        Button { showsMorePopover.toggle() } label: {
+            moreButtonLabel
+        }
+        .buttonStyle(.pressable)
+        .popover(isPresented: $showsMorePopover, arrowEdge: .bottom) {
+            VStack(alignment: .leading, spacing: 8) {
+                if showsPlaybackPanels {
+                    Button {
+                        player.activePanel = player.activePanel == .lyrics ? nil : .lyrics
+                        showsMorePopover = false
+                    } label: { Label("歌词", systemImage: "quote.bubble") }
+                    Button {
+                        settings.showDesktopLyrics.toggle()
+                        showsMorePopover = false
+                    } label: { Label("桌面歌词", systemImage: "inset.filled.bottomthird.square") }
+                    Button {
+                        player.activePanel = player.activePanel == .queue ? nil : .queue
+                        showsMorePopover = false
+                    } label: { Label("播放列表", systemImage: "list.bullet") }
+                    .disabled(player.isFMMode)
+                    Divider()
+                }
+                menuContents
+            }
+            .padding(12)
+            .frame(width: 286)
+            .buttonStyle(LyricsMoreMenuRowStyle())
+            // Submenus reuse the row button style so they match the other rows.
+            .menuStyle(.button)
+            .menuIndicator(.hidden)
+            .labelStyle(.titleAndIcon)
+        }
+        .accessibilityLabel("更多操作")
+        .accessibilityIdentifier(accessibilityID)
+        #else
+        Menu {
+            menuContents
+        } label: {
+            moreButtonLabel
+        }
+        .menuOrder(.fixed)
+        .tint(.white)
+        .preferredColorScheme(.dark)
+        .buttonStyle(.pressable)
+        .frame(width: 44, height: 44)
+        .contentShape(Rectangle())
+        .accessibilityLabel("更多操作")
+        .accessibilityIdentifier(accessibilityID)
+        #endif
+    }
+
+    private var moreButtonLabel: some View {
+        Image(systemName: "ellipsis")
+            .font(usesPortraitStyle ? .title3.weight(.semibold) : .system(size: 22, weight: .medium))
+            .foregroundStyle(usesPortraitStyle ? .white : tint)
+            .frame(width: usesPortraitStyle ? 40 : 44, height: usesPortraitStyle ? 40 : 44)
+            .contentShape(Circle())
+    }
+
+    @ViewBuilder
+    private var menuContents: some View {
+        if usesPortraitStyle {
+            portraitMenuContents
+        } else {
+            standardMenuContents
+        }
+    }
+
+    @ViewBuilder
+    private var portraitMenuContents: some View {
+        if showsPlaybackControls {
+            playbackControls
+            Divider()
+        }
+        // SEAM: no LyricsSourceMenu — HAo has a single lyrics source, so
+        // there is nothing to switch between (Coda's row is dropped, not stubbed).
+        if showsLyricsAdjustment {
+            lyricsTimingControls
+        }
+        if let onOpenSoundEffects {
+            // SEAM: Coda has no EQ row here; chen 2026-11-26 wants the
+            // equalizer in this "..." menu (same sheet as Settings → 音效).
+            Button { onOpenSoundEffects() } label: {
+                Label("音效", systemImage: "waveform")
+            }
+        }
+        #if os(iOS)
+        Divider()
+        SleepTimerMenu(player: player)
+        #endif
+        Divider()
+        if track.album.id != 0 {
+            let album = track.album
+            Button { onOpenDestination?(.album(album.id)) } label: {
+                Label("前往专辑：" + album.name, systemImage: "music.note.list")
+            }
+        }
+        Menu {
+            ForEach(track.artists.filter { $0.id != 0 }) { artist in
+                Button(artist.name) { onOpenDestination?(.artist(artist.id)) }
+            }
+        } label: { Label("前往歌手", systemImage: "music.mic") }
+        Divider()
+        if let url = track.musicShareURL {
+            ShareLink(item: url) { Label("分享", systemImage: "square.and.arrow.up") }
+        }
+        TrackDownloadActions(track: track, showsIcons: true)
+    }
+
+    @ViewBuilder
+    private var standardMenuContents: some View {
+        if showsPlaybackControls {
+            playbackControls
+            Divider()
+        }
+        Button {
+            Platform.copyToPasteboard(string: track.musicShareURL?.absoluteString ?? "")
+            ToastCenter.shared.show(String(localized: "链接已复制"))
+            #if os(macOS)
+            showsMorePopover = false
+            #endif
+        } label: {
+            Label("复制链接", systemImage: "link")
+        }
+
+        #if os(iOS)
+        Divider()
+        SleepTimerMenu(player: player)
+        #endif
+
+        Divider()
+        // SEAM: no LyricsSourceMenu — HAo has a single lyrics source (see above).
+        if showsLyricsAdjustment {
+            lyricsTimingControls
+        }
+
+        Divider()
+        TrackDownloadActions(track: track, showsIcons: true)
+    }
+
+    @ViewBuilder
+    private var playbackControls: some View {
+        if player.isFMMode {
+            Button { player.fmTrash() } label: {
+                Label("不喜欢，换一首", systemImage: "trash")
+            }
+        } else {
+            #if os(macOS)
+            Button { player.cycleQueueOrder() } label: {
+                Label(player.queueOrder.controlHelp, systemImage: player.queueOrder.symbolName)
+            }
+            #else
+            Toggle(isOn: Binding(get: { player.shuffleEnabled }, set: { _ in player.toggleShuffle() })) {
+                Label("随机播放", systemImage: "shuffle")
+            }
+            #endif
+            Button { player.cycleRepeatMode() } label: {
+                Label(player.repeatMode == .one ? "单曲循环" : (player.repeatMode == .off ? "循环关闭" : "列表循环"),
+                      systemImage: player.repeatMode == .one ? "repeat.1" : "repeat")
+            }
+        }
+        #if os(iOS)
+        Button {
+            player.activePanel = player.activePanel == .queue ? nil : .queue
+        } label: {
+            Label("播放列表", systemImage: "list.bullet")
+        }
+        .disabled(player.isFMMode)
+        #endif
+    }
+
+    @ViewBuilder
+    private var lyricsTimingControls: some View {
+        #if os(iOS)
+        if #available(iOS 16.4, *) {
+            lyricsTimingButtons.menuActionDismissBehavior(.disabled)
+        } else {
+            lyricsTimingButtons
+        }
+        #else
+        VStack(alignment: .leading, spacing: 10) {
+            Text("歌词时间调节")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+            HStack(spacing: 6) {
+                timingButton("-0.2s", symbol: "arrow.left") {
+                    player.adjustLyricsTiming(by: -2)
+                }
+                timingButton("还原", symbol: "arrow.counterclockwise") {
+                    player.setLyricsTiming(steps: 0)
+                }
+                timingButton("+0.2s", symbol: "arrow.right") {
+                    player.adjustLyricsTiming(by: 2)
+                }
+            }
+        }
+        .padding(.vertical, 4)
+        .disabled(player.lyrics?.isEmpty != false || player.currentTrack?.id != track.id)
+        #endif
+    }
+
+    #if os(macOS)
+    private func timingButton(_ title: LocalizedStringKey, symbol: String, action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            VStack(spacing: 7) {
+                Image(systemName: symbol)
+                    .font(.system(size: 21, weight: .medium))
+                    .frame(height: 25)
+                Text(title)
+                    .font(.system(size: 11))
+                    .lineLimit(1)
+            }
+            .frame(maxWidth: .infinity)
+            .padding(.vertical, 10)
+            .contentShape(RoundedRectangle(cornerRadius: 8))
+        }
+        .buttonStyle(.plain)
+        .background(.primary.opacity(0.06), in: RoundedRectangle(cornerRadius: 8))
+        .accessibilityLabel(title)
+    }
+    #endif
+
+    #if os(iOS)
+    private var lyricsTimingButtons: some View {
+        ControlGroup {
+            Button {
+                player.adjustLyricsTiming(by: -2)
+            } label: {
+                lyricsTimingLabel("-0.2s", image: "LyricsTimingEarlier")
+            }
+            .accessibilityLabel("歌词快了，延后零点二秒")
+
+            Button {
+                player.setLyricsTiming(steps: 0)
+            } label: {
+                lyricsTimingLabel("还原", image: "LyricsTimingReset")
+            }
+            .accessibilityLabel("还原歌词时间")
+
+            Button {
+                player.adjustLyricsTiming(by: 2)
+            } label: {
+                lyricsTimingLabel("+0.2s", image: "LyricsTimingLater")
+            }
+            .accessibilityLabel("歌词慢了，提前零点二秒")
+        }
+        .disabled(player.lyrics?.isEmpty != false || player.currentTrack?.id != track.id)
+    }
+
+    private func lyricsTimingLabel(_ title: String, image: String) -> some View {
+        Label {
+            Text(title)
+                .font(.system(size: 12))
+        } icon: {
+            Image(image)
+                .renderingMode(.template)
+                .resizable()
+                .scaledToFit()
+                .frame(width: 20, height: 20)
+                .foregroundStyle(.white)
+        }
+    }
+    #endif
+
+}
+
+
+#if os(macOS)
+private struct LyricsMoreMenuRowStyle: ButtonStyle {
+    func makeBody(configuration: Configuration) -> some View {
+        configuration.label
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .padding(.horizontal, 8)
+            .padding(.vertical, 7)
+            .contentShape(RoundedRectangle(cornerRadius: 6))
+            .background(configuration.isPressed ? Color.primary.opacity(0.1) : .clear,
+                        in: RoundedRectangle(cornerRadius: 6))
+    }
+}
+#endif
+
+#if os(iOS)
+private struct PortraitControlsHeightKey: PreferenceKey {
+    static let defaultValue: CGFloat = 0
+    static func reduce(value: inout CGFloat, nextValue: () -> CGFloat) {
+        value = max(value, nextValue())
+    }
+}
+#endif
+
+private struct PlaylistPanelSelectedKey: EnvironmentKey {
+    static let defaultValue = false
+}
+
+private extension EnvironmentValues {
+    var playlistPanelSelected: Bool {
+        get { self[PlaylistPanelSelectedKey.self] }
+        set { self[PlaylistPanelSelectedKey.self] = newValue }
     }
 }

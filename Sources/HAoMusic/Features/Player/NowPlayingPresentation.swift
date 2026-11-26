@@ -107,10 +107,36 @@ private struct DismissNowPlayingDragActionKey: EnvironmentKey {
     static let defaultValue: NowPlayingDismissDragAction? = nil
 }
 
+/// Dismiss-then-navigate: the action Coda's portrait player calls before
+/// navigating from inside Now Playing (dismiss first, then open the
+/// destination). HAo provides no value yet — `openTrackDestination` falls
+/// back to navigating directly, HAo's current behaviour. (Glue for the
+/// copied Coda player; wiring a provider is a separate leg.)
+private struct DismissNowPlayingThenActionKey: EnvironmentKey {
+    static let defaultValue: ((@escaping () -> Void) -> Void)? = nil
+}
+
+/// Whether an external surface (e.g. an iPad split panel) paints the player
+/// background instead of the player itself. HAo always paints its own.
+/// (Glue for the copied Coda player.)
+private struct NowPlayingBackgroundIsExternalKey: EnvironmentKey {
+    static let defaultValue = false
+}
+
 extension EnvironmentValues {
     var dismissNowPlayingAction: (() -> Void)? {
         get { self[DismissNowPlayingActionKey.self] }
         set { self[DismissNowPlayingActionKey.self] = newValue }
+    }
+
+    var dismissNowPlayingThenAction: ((@escaping () -> Void) -> Void)? {
+        get { self[DismissNowPlayingThenActionKey.self] }
+        set { self[DismissNowPlayingThenActionKey.self] = newValue }
+    }
+
+    var nowPlayingBackgroundIsExternal: Bool {
+        get { self[NowPlayingBackgroundIsExternalKey.self] }
+        set { self[NowPlayingBackgroundIsExternalKey.self] = newValue }
     }
 
     var dismissNowPlayingDragAction: NowPlayingDismissDragAction? {

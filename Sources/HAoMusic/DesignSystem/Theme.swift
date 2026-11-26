@@ -16,7 +16,51 @@ enum Theme {
         static let small: CGFloat = 6
         static let standard: CGFloat = 8
         static let large: CGFloat = 12
+        /// Playlist and album covers. (Coda token; the copied player files use it.)
+        static let cover: CGFloat = 22
         static let panel: CGFloat = 20
+    }
+
+    /// Shared spacing rhythm, verbatim from Coda's Theme — the copied player
+    /// files use these tokens. HAo's existing Layout values are unchanged.
+    enum Spacing {
+        static let micro: CGFloat = 2
+        static let tight: CGFloat = 4
+        static let small: CGFloat = 8
+        static let control: CGFloat = 12
+        static let component: CGFloat = 16
+        static let group: CGFloat = 24
+        static let phonePage: CGFloat = 20
+        static let page: CGFloat = 24
+        static let section: CGFloat = 20
+        static let largeSection: CGFloat = 24
+        static let discoverySection: CGFloat = 32
+    }
+
+    /// iOS follows Dynamic Type; desktop keeps a denser reading rhythm.
+    /// Verbatim from Coda's Theme — the copied player files use these tokens.
+    enum Typography {
+        #if os(iOS)
+        static let pageTitle: Font = .largeTitle.bold()
+        static let sectionTitle: Font = .title2.weight(.semibold)
+        static let detailTitle: Font = .title2.bold()
+        static let cardTitle: Font = .headline
+        static let body: Font = .body
+        static let trackTitle: Font = .body.weight(.medium)
+        static let secondary: Font = .subheadline
+        static let caption: Font = .footnote
+        static let badge: Font = .caption2.weight(.medium)
+        #else
+        static let pageTitle: Font = .system(size: 28, weight: .bold)
+        static let sectionTitle: Font = .system(size: 22, weight: .semibold)
+        static let detailTitle: Font = .system(size: 22, weight: .bold)
+        static let cardTitle: Font = .system(size: 15, weight: .semibold)
+        static let body: Font = .system(size: 13)
+        static let trackTitle: Font = .system(size: 13, weight: .medium)
+        static let secondary: Font = .system(size: 12)
+        static let caption: Font = .system(size: 11)
+        static let badge: Font = .system(size: 10, weight: .medium)
+        #endif
     }
 
     enum Layout {
@@ -53,6 +97,17 @@ enum Theme {
         /// Gap between the floating player bar and the window's bottom edge.
         /// Must match the bar's own `.padding(.bottom,)` in PlayerBar.
         static let playerBarBottomMargin: CGFloat = 16
+        /// Coda Layout keys the copied player files use. HAo's own values
+        /// above are unchanged; these are additive only.
+        static let playerBarHorizontalMargin: CGFloat = 16
+        static let playerBarProgressMinimumWidth: CGFloat = 720
+        /// Align row content, including its internal inset, to the page edge.
+        static var trackListInset: CGFloat { contentInset - Spacing.control }
+        #if os(iOS)
+        static let iPadPlayerBarHorizontalMargin = playerBarHorizontalMargin
+        static let iPadPlayerBarBottomMargin = playerBarBottomMargin
+        static let iPadChromeCornerRadius: CGFloat = 26
+        #endif
         /// Bottom inset pages need so scrolled content clears the floating bar.
         static var playerChromeClearance: CGFloat { playerBarHeight + playerBarBottomMargin }
         /// Extra breathing margin for scrollable content clearing chrome.

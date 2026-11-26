@@ -14,6 +14,7 @@
 | 仓库 | 许可证 | 在 HAo Music 中的位置 | 说明文件 |
 | --- | --- | --- | --- |
 | [XIaodou0416/Beans-Music](https://github.com/XIaodou0416/Beans-Music) | MIT | QQ 音乐 / 酷狗 API 与登录（经 Kumone / Coda 改编） | [Beans-Music.md](Beans-Music.md) |
+| [youshen2/MeloX](https://github.com/youshen2/MeloX) | GPL-3.0（[LICENSE-GPL-3.0.txt](../LICENSE-GPL-3.0.txt)） | 播放器竖屏封面、流体背景、歌词列与歌词模型（经 Coda 改编后原样引入） | [MeloX.md](MeloX.md) |
 
 ## 3. 仅参考接口协议（未复制源码）
 

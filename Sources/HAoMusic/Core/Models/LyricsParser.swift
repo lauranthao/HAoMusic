@@ -41,6 +41,25 @@ struct ParsedLyrics: Hashable {
 
     var isEmpty: Bool { lines.isEmpty }
 
+    /// Timed lines for the copied Coda lyrics column, built from HAo's lines
+    /// (Coda's `synchronizedLines` logic, same ids/timing kinds). Nil while
+    /// no lyrics are loaded; the column falls back to the plain line list.
+    var timeline: [TimedLyricLine]? {
+        guard !lines.isEmpty else { return nil }
+        return lines.map { line in
+            TimedLyricLine(
+                id: "coda:\(line.id)",
+                time: line.time,
+                duration: line.end - line.time,
+                timingKind: line.words == nil ? .lineSynchronized : .precise,
+                text: line.text,
+                syllables: (line.words ?? []).map { word in
+                    LyricSyllable(text: word.text, startTime: word.start, endTime: word.end)
+                }
+            )
+        }
+    }
+
     /// Index of the active line for a playback position.
     func activeIndex(at time: TimeInterval) -> Int? {
         guard !lines.isEmpty else { return nil }

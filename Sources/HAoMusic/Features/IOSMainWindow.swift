@@ -753,7 +753,7 @@ struct IOSLibraryView: View {
                     }
 
                     SectionHeader(title: "收藏的专辑") {
-                        openDestination(.collections)
+                        openDestination(.collections(.albums))
                     }
                     .padding(.horizontal, 16)
                     if account.likedAlbums.isEmpty {
@@ -766,7 +766,7 @@ struct IOSLibraryView: View {
                     }
 
                     SectionHeader(title: "收藏的歌手") {
-                        openDestination(.collections)
+                        openDestination(.collections(.artists))
                     }
                     .padding(.horizontal, 16)
                     if account.likedArtists.isEmpty {
@@ -833,7 +833,7 @@ struct IOSLibraryView: View {
             saveAccessibilityLabel: String(localized: "云盘")
         ) {
             Menu {
-                Button { openDestination(.collections) } label: {
+                Button { openDestination(.collections(.albums)) } label: {
                     Label("我的收藏", systemImage: "star")
                 }
                 Button { openDestination(.downloaded) } label: {

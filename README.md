@@ -3,7 +3,7 @@
 一款干净、快速的 iOS 音乐应用。网易云音乐、QQ 音乐、酷狗、酷我多源听歌，高音质自动降档，灰歌自动找可播音源。
 
 ![iOS 16+](https://img.shields.io/badge/iOS-16.0%2B-black)
-![Version](https://img.shields.io/badge/version-0.1.2-red)
+![Version](https://img.shields.io/badge/version-0.1.3-red)
 ![License](https://img.shields.io/badge/license-AGPL--3.0-blue)
 
 ## 功能

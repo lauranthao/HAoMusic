@@ -1,15 +1,22 @@
 import SwiftUI
 
 /// 我的收藏 — liked albums and followed artists.
-struct CollectionsView: View {
-    private enum Tab: String, CaseIterable, Identifiable {
-        case albums = "专辑"
-        case artists = "歌手"
+enum CollectionTab: String, CaseIterable, Identifiable {
+    case albums = "专辑"
+    case artists = "歌手"
 
-        var id: String { rawValue }
+    var id: String { rawValue }
+}
+
+struct CollectionsView: View {
+    let initialTab: CollectionTab
+
+    init(initialTab: CollectionTab = .albums) {
+        self.initialTab = initialTab
+        _tab = State(initialValue: initialTab)
     }
 
-    @State private var tab: Tab = .albums
+    @State private var tab: CollectionTab
     @State private var isLoading = true
 
     @EnvironmentObject private var account: AccountStore
@@ -18,7 +25,7 @@ struct CollectionsView: View {
         ScrollView {
             VStack(alignment: .leading, spacing: 20) {
                 Picker("", selection: $tab) {
-                    ForEach(Tab.allCases) { tab in
+                    ForEach(CollectionTab.allCases) { tab in
                         Text(LocalizedStringKey(tab.rawValue)).tag(tab)
                     }
                 }

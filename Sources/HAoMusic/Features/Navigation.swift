@@ -103,7 +103,7 @@ enum Destination: Hashable {
     case daily
     case toplists
     case recents
-    case collections
+    case collections(CollectionTab)
     case cloud
     case search(String)
 }
@@ -149,8 +149,8 @@ struct DestinationsModifier: ViewModifier {
                     ToplistsView()
                 case .recents:
                     RecentsView()
-                case .collections:
-                    CollectionsView()
+                case .collections(let tab):
+                    CollectionsView(initialTab: tab)
                 case .cloud:
                     CloudView()
                 case .search(let query):

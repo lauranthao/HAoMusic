@@ -58,6 +58,11 @@ struct Track: Codable, Hashable, Identifiable {
     var artistNames: String { artists.map(\.name).joined(separator: " / ") }
     var duration: TimeInterval { TimeInterval(durationMS) / 1000 }
     var subtitle: String? { transNames.first ?? alias.first }
+    /// Share link for the track. Coda picks a per-platform link from the
+    /// song's source; HAo's tracks carry no source, so this is the NetEase
+    /// web link — the same fallback Coda uses when it has no platform song.
+    /// (Glue for the copied Coda player more menu.)
+    var musicShareURL: URL? { URL(string: "https://music.163.com/#/song?id=\(id)") }
 
     private enum CodingKeys: String, CodingKey {
         case id, name
