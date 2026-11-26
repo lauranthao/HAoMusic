@@ -154,11 +154,43 @@ struct HomeView: View {
                     .padding(.top, 8)
             }
 
+            if !model.newAlbums.isEmpty {
+                VStack(alignment: .leading, spacing: Theme.Layout.sectionHeaderSpacing) {
+                    SectionHeader(title: "新碟上架")
+                        .padding(.horizontal, Theme.Layout.contentInset)
+                    GeometryReader { geometry in
+                        let size = Theme.Layout.fittedShelfCardSize(availableWidth: geometry.size.width, leadingInset: Theme.Layout.contentInset)
+                        ScrollView(.horizontal, showsIndicators: false) {
+                            LazyHStack(alignment: .top, spacing: 16) {
+                                ForEach(model.newAlbums) { album in
+                                    albumCard(album, size: size)
+                                }
+                            }
+                            .padding(.horizontal, Theme.Layout.contentInset)
+                            .frame(height: Theme.Layout.coverShelfHeight)
+                        }
+                        .shelfEdgeClip()
+                    }
+                    .frame(height: Theme.Layout.coverShelfHeight)
+                }
+            }
+
             if !model.recommendPlaylists.isEmpty {
                 Shelf(title: "推荐歌单", rowHeight: Theme.Layout.coverShelfHeight) {
                     ForEach(Array(model.recommendPlaylists.prefix(12).enumerated()), id: \.element.id) { index, playlist in
                         playlistCard(playlist)
                             .staggeredAppearance(index: index, id: "home-rec-\(playlist.id)")
+                    }
+                }
+            }
+
+            if !model.toplists.isEmpty {
+                Shelf(title: "排行榜", seeAll: nil, rowHeight: Theme.Layout.coverShelfHeight) {
+                    ForEach(model.toplists) { toplist in
+                        NavigationLink(value: Destination.playlist(toplist.id)) {
+                            toplistCard(toplist)
+                        }
+                        .buttonStyle(.plain)
                     }
                 }
             }
@@ -178,38 +210,6 @@ struct HomeView: View {
                         }
                         .buttonStyle(.plain)
                     }
-                }
-            }
-
-            if !model.toplists.isEmpty {
-                Shelf(title: "排行榜", seeAll: nil, rowHeight: Theme.Layout.coverShelfHeight) {
-                    ForEach(model.toplists) { toplist in
-                        NavigationLink(value: Destination.playlist(toplist.id)) {
-                            toplistCard(toplist)
-                        }
-                        .buttonStyle(.plain)
-                    }
-                }
-            }
-
-            if !model.newAlbums.isEmpty {
-                VStack(alignment: .leading, spacing: Theme.Layout.sectionHeaderSpacing) {
-                    SectionHeader(title: "新碟上架")
-                        .padding(.horizontal, Theme.Layout.contentInset)
-                    GeometryReader { geometry in
-                        let size = Theme.Layout.fittedShelfCardSize(availableWidth: geometry.size.width, leadingInset: Theme.Layout.contentInset)
-                        ScrollView(.horizontal, showsIndicators: false) {
-                            LazyHStack(alignment: .top, spacing: 16) {
-                                ForEach(model.newAlbums) { album in
-                                    albumCard(album, size: size)
-                                }
-                            }
-                            .padding(.horizontal, Theme.Layout.contentInset)
-                            .frame(height: Theme.Layout.coverShelfHeight)
-                        }
-                        .shelfEdgeClip()
-                    }
-                    .frame(height: Theme.Layout.coverShelfHeight)
                 }
             }
 

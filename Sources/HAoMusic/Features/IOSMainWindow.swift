@@ -259,13 +259,6 @@ public struct IOSMainWindow: View {
                 tabStack(.home) { HomeView() }
             }
 
-            // HAo Music tab order: search 2nd (Kumone had it last).
-            Tab(value: .search, role: .search) {
-                tabStack(.search) { SearchView(query: "") }
-            } label: {
-                Label("搜索", systemImage: "magnifyingglass")
-            }
-
             Tab("精选", systemImage: "square.grid.2x2", value: .explore) {
                 tabStack(.explore) { ExploreView() }
             }
@@ -276,6 +269,12 @@ public struct IOSMainWindow: View {
 
             Tab("我的", systemImage: "person.crop.circle", value: .library) {
                 tabStack(.library) { IOSLibraryView(showLogin: $showLogin) }
+            }
+
+            Tab(value: .search, role: .search) {
+                tabStack(.search) { SearchView(query: "") }
+            } label: {
+                Label("搜索", systemImage: "magnifyingglass")
             }
         }
     }
@@ -368,12 +367,12 @@ enum IOSTab: Hashable {
 }
 
 extension IOSMainWindow {
-    // HAo Music tab order: search moved 2nd (Kumone had it 4th).
+    // Tab order kept as Kumone's (chen: don't change the menu bar).
     static let tabItems: [GlassTabBar.Item] = [
         .init(tab: .home, title: "推荐", icon: "house"),
-        .init(tab: .search, title: "搜索", icon: "magnifyingglass"),
         .init(tab: .explore, title: "精选", icon: "square.grid.2x2"),
         .init(tab: .fm, title: "漫游", icon: "dot.radiowaves.left.and.right"),
+        .init(tab: .search, title: "搜索", icon: "magnifyingglass"),
         .init(tab: .library, title: "我的", icon: "person.crop.circle"),
     ]
 }

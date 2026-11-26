@@ -135,33 +135,34 @@ struct AlbumDetailView: View {
 
     // MARK: - Compact Header
 
+    // HAo Music album header: cover centred on top (Apple Music style),
+    // unlike Kumone's cover-left / text-right row.
     private func compactHeader(_ album: AlbumDetail) -> some View {
-        VStack(alignment: .leading, spacing: 14) {
-            HStack(alignment: .top, spacing: 14) {
-                CachedAsyncImage(url: album.picUrl?.resizedImageURL(384))
-                    .frame(width: 120, height: 120)
-                    .clipShape(RoundedRectangle(cornerRadius: Theme.Radius.standard, style: .continuous))
-                    .shadow(color: .black.opacity(0.2), radius: 10, y: 4)
+        VStack(alignment: .center, spacing: 14) {
+            CachedAsyncImage(url: album.picUrl?.resizedImageURL(384))
+                .frame(width: 180, height: 180)
+                .clipShape(RoundedRectangle(cornerRadius: Theme.Radius.standard, style: .continuous))
+                .shadow(color: .black.opacity(0.2), radius: 10, y: 4)
 
-                VStack(alignment: .leading, spacing: 6) {
-                    Text(album.name)
-                        .font(.system(size: 16, weight: .bold))
-                        .lineLimit(3)
+            VStack(alignment: .center, spacing: 6) {
+                Text(album.name)
+                    .font(.system(size: 16, weight: .bold))
+                    .lineLimit(3)
+                    .multilineTextAlignment(.center)
 
-                    if let artist = album.artist {
-                        NavigationLink(value: Destination.artist(artist.id)) {
-                            Text(artist.name)
-                                .font(.system(size: 13, weight: .medium))
-                                .foregroundStyle(Theme.accent)
-                                .lineLimit(1)
-                        }
-                        .buttonStyle(.plain)
+                if let artist = album.artist {
+                    NavigationLink(value: Destination.artist(artist.id)) {
+                        Text(artist.name)
+                            .font(.system(size: 13, weight: .medium))
+                            .foregroundStyle(Theme.accent)
+                            .lineLimit(1)
                     }
-
-                    Text("\(tracks.count) 首 · \(Formatters.date(fromMS: album.publishTime))")
-                        .font(.system(size: 11))
-                        .foregroundStyle(.secondary)
+                    .buttonStyle(.plain)
                 }
+
+                Text("\(tracks.count) 首 · \(Formatters.date(fromMS: album.publishTime))")
+                    .font(.system(size: 11))
+                    .foregroundStyle(.secondary)
             }
 
             if let description = album.description, !description.isEmpty {
@@ -179,6 +180,7 @@ struct AlbumDetailView: View {
                     }
                 }
                 .buttonStyle(.plain)
+                .frame(maxWidth: .infinity, alignment: .leading)
                 .sheet(isPresented: $showFullDescription) {
                     NavigationStack {
                         ScrollView {
