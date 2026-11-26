@@ -20,7 +20,7 @@ struct WallpaperSettingsView: View {
                 preview
                 Toggle("使用壁纸", isOn: $settings.wallpaperEnabled)
                     .disabled(!hasWallpaper)
-                Text("壁纸显示在推荐、精选、搜索、我的等页面的背景中，透过玻璃菜单栏可见。播放页保留封面配色，壁纸在后方透出。")
+                Text("壁纸显示在推荐、发现、搜索、我的等页面的背景中，透过玻璃菜单栏可见。播放页保留封面配色，壁纸在后方透出。")
                     .font(.caption)
                     .foregroundStyle(.secondary)
             }

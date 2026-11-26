@@ -19,7 +19,7 @@ struct SidebarView: View {
         List {
             Section {
                 row(.home, title: "推荐", icon: "house.fill")
-                row(.explore, title: "精选", icon: "square.grid.2x2.fill")
+                row(.explore, title: "发现", icon: "square.grid.2x2.fill")
                 row(.fm, title: "漫游", icon: "wave.3.right.circle.fill")
             }
 
