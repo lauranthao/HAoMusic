@@ -29,7 +29,7 @@ enum MenuBarIcon {
             return true
         }
         image.isTemplate = true
-        image.accessibilityDescription = "Kumone"
+        image.accessibilityDescription = "HAo Music"
         return image
     }()
 }

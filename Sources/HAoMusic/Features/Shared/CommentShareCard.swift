@@ -162,7 +162,7 @@ struct CommentShareCard: View {
             }
             Spacer()
             Label {
-                Text(verbatim: "Kumone")
+                Text(verbatim: "HAo Music")
             } icon: {
                 Image(systemName: "music.note")
             }

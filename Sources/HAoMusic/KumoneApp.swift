@@ -16,7 +16,7 @@ public struct KumoneApp: App {
     public init() {}
 
     public var body: some Scene {
-        Window("Kumone", id: "main") {
+        Window("HAo Music", id: "main") {
             UpstreamGate { MainWindow() }
                 .environmentObject(player)
                 .environmentObject(account)

@@ -259,6 +259,13 @@ public struct IOSMainWindow: View {
                 tabStack(.home) { HomeView() }
             }
 
+            // HAo Music tab order: search 2nd (Kumone had it last).
+            Tab(value: .search, role: .search) {
+                tabStack(.search) { SearchView(query: "") }
+            } label: {
+                Label("搜索", systemImage: "magnifyingglass")
+            }
+
             Tab("精选", systemImage: "square.grid.2x2", value: .explore) {
                 tabStack(.explore) { ExploreView() }
             }
@@ -269,12 +276,6 @@ public struct IOSMainWindow: View {
 
             Tab("我的", systemImage: "person.crop.circle", value: .library) {
                 tabStack(.library) { IOSLibraryView(showLogin: $showLogin) }
-            }
-
-            Tab(value: .search, role: .search) {
-                tabStack(.search) { SearchView(query: "") }
-            } label: {
-                Label("搜索", systemImage: "magnifyingglass")
             }
         }
     }

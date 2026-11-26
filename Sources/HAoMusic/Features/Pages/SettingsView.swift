@@ -279,7 +279,7 @@ struct SettingsView: View {
 
             Section {
                 VStack(spacing: 2) {
-                    Text("Kumone")
+                    Text("HAo Music")
                         .font(.footnote)
                         .foregroundStyle(.secondary)
                     Text(appVersionAndBuild)
@@ -348,9 +348,9 @@ struct SettingsView: View {
 
     private var appVersionAccessibilityLabel: String {
         if let build = appBuild, !build.isEmpty {
-            return "Kumone, version \(appVersion), build \(build)"
+            return "HAo Music, version \(appVersion), build \(build)"
         }
-        return "Kumone, version \(appVersion)"
+        return "HAo Music, version \(appVersion)"
     }
 
 }
