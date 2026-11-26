@@ -427,7 +427,7 @@
 		B999CCE1334463749C86E83A = {isa = PBXBuildFile; fileRef = 1606A3E27E01F13C4AD4E82A; };
 		B6F5BFCAFCADDBBD687CFC04 = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PlaybackHandoffList.swift; sourceTree = "<group>"; };
 		F013FBD0AC14D4C34F1CB77A = {isa = PBXBuildFile; fileRef = B6F5BFCAFCADDBBD687CFC04; };
-		55A17C34ABEAFC8E7821ACE6 = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SyncRecord+Presentation.swift; sourceTree = "<group>"; };
+		55A17C34ABEAFC8E7821ACE6 = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "SyncRecord+Presentation.swift"; sourceTree = "<group>"; };
 		59F0F2CD6929988B8C0C8708 = {isa = PBXBuildFile; fileRef = 55A17C34ABEAFC8E7821ACE6; };
 		33E05DF471878FEE9287F48B = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SyncSettingsSection.swift; sourceTree = "<group>"; };
 		C2274B92CF9E27081D61839E = {isa = PBXBuildFile; fileRef = 33E05DF471878FEE9287F48B; };
