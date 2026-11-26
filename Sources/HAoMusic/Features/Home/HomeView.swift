@@ -72,9 +72,10 @@ struct HomeView: View {
 
     private func play(_ track: Track) {
         if let index = library.localTracks.firstIndex(of: track) {
-            player.play(tracks: library.localTracks, startAt: index)
+            player.play(tracks: library.localTracks, startAt: index, source: .home)
         } else {
-            player.play(track: track)
+            player.play(track: track, source: .home)
+            library.cacheNetworkTrack(track)
         }
         library.recordPlayed(track)
     }

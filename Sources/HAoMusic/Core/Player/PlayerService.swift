@@ -17,6 +17,7 @@ enum RepeatMode: String, CaseIterable, Codable {
 
 /// AVPlayer 播放引擎：队列、随机、循环、进度、锁屏/控制中心切歌。
 /// 与 AVPlayer 的交互都在主线程（@MainActor），不跨线程传 player。
+/// 网络曲目在 play(at:) 里现解析：第一个能播的地址立刻播，播不了按解析管线走解锁。
 @MainActor
 final class PlayerService: ObservableObject {
     @Published private(set) var queue: [PlaybackItem] = []
@@ -26,6 +27,13 @@ final class PlayerService: ObservableObject {
     @Published private(set) var duration: Double = 0
     @Published var shuffleEnabled = false
     @Published var repeatMode: RepeatMode = .off
+    /// 正在解析播放地址的曲目 ID（UI 显示“正在解析…”）。
+    @Published private(set) var resolvingTrackID: String?
+    /// 最近一次手动点播失败的原因（UI 显示；下次播放时清掉）。
+    @Published private(set) var resolveError: String?
+
+    private let resolver: PlaybackResolver?
+    private var resolveTask: Task<Void, Never>?
 
     var currentItem: PlaybackItem? {
         guard let currentIndex, queue.indices.contains(currentIndex) else { return nil }
@@ -40,7 +48,8 @@ final class PlayerService: ObservableObject {
     private var shuffledOrder: [Int] = []
     private var shuffledPosition: Int = 0
 
-    init() {
+    init(resolver: PlaybackResolver? = nil) {
+        self.resolver = resolver
         configureAudioSession()
         installTimeObserver()
         installEndObserver()
@@ -48,6 +57,7 @@ final class PlayerService: ObservableObject {
     }
 
     deinit {
+        resolveTask?.cancel()
         if let timeObserver {
             player.removeTimeObserver(timeObserver)
         }
@@ -58,27 +68,67 @@ final class PlayerService: ObservableObject {
 
     // MARK: - 播放控制
 
-    func play(tracks: [Track], startAt index: Int = 0) {
-        queue = tracks.map(PlaybackItem.init)
+    /// 每次播放都记 PlaySource；manual 表示用户手动点播（手动点播先清失败记忆，
+    /// 播不了停在原地提示；自动切歌播不了直接跳下一首）。
+    func play(tracks: [Track], startAt index: Int = 0, source: PlaySource = .unknown, manual: Bool = true) {
+        queue = tracks.map { PlaybackItem(track: $0, playSource: source) }
         shuffledOrder = []
         shuffledPosition = 0
-        play(at: index)
+        play(at: index, manual: manual)
     }
 
-    func play(track: Track) {
-        play(tracks: [track], startAt: 0)
+    func play(track: Track, source: PlaySource = .unknown) {
+        play(tracks: [track], startAt: 0, source: source, manual: true)
     }
 
-    func play(at index: Int) {
+    func play(at index: Int, manual: Bool = true) {
+        resolveTask?.cancel()
+        resolveTask = nil
+        resolvingTrackID = nil
+        resolveError = nil
         guard queue.indices.contains(index) else { return }
         currentIndex = index
         currentTime = 0
         duration = 0
-        guard let url = queue[index].playURL else {
-            // v1 只有本地文件；没有可播地址就跳下一首
+        if let url = queue[index].playURL {
+            startPlayback(url: url)
+            return
+        }
+        guard queue[index].needsResolution, let resolver else {
+            // 没有可播地址、没有解析器：跳下一首
             advanceToNextAfterUnplayable()
             return
         }
+        // 网络曲目：现解析。解析是异步的，切歌/停止会取消本次解析。
+        resolvingTrackID = queue[index].id
+        let itemID = queue[index].id
+        let track = queue[index].track
+        resolveTask = Task {
+            let resolution = await resolver.resolve(track: track, manual: manual)
+            guard !Task.isCancelled else { return }
+            self.resolveTask = nil
+            guard self.currentIndex == index,
+                  self.queue.indices.contains(index),
+                  self.queue[index].id == itemID else { return }
+            self.resolvingTrackID = nil
+            switch resolution {
+            case let .ready(url, quality, source):
+                self.queue[index].resolvedURL = url
+                self.queue[index].resolvedQuality = quality
+                self.queue[index].resolvedSource = source
+                self.startPlayback(url: url)
+            case let .unplayable(reason):
+                if manual {
+                    // 手动点播不了：停在原地，播放页显示原因，不自动跳歌。
+                    self.resolveError = reason
+                } else {
+                    self.advanceToNextAfterUnplayable()
+                }
+            }
+        }
+    }
+
+    private func startPlayback(url: URL) {
         let item = AVPlayerItem(url: url)
         player.replaceCurrentItem(with: item)
         player.play()
@@ -104,6 +154,9 @@ final class PlayerService: ObservableObject {
     }
 
     func stop() {
+        resolveTask?.cancel()
+        resolveTask = nil
+        resolvingTrackID = nil
         player.pause()
         player.replaceCurrentItem(with: nil)
         isPlaying = false
@@ -112,23 +165,23 @@ final class PlayerService: ObservableObject {
         MPNowPlayingInfoCenter.default().nowPlayingInfo = nil
     }
 
-    func next() {
+    func next(manual: Bool = true) {
         guard let currentIndex else { return }
         if shuffleEnabled {
-            playNextShuffled()
+            playNextShuffled(manual: manual)
             return
         }
         let nextIndex = currentIndex + 1
         if queue.indices.contains(nextIndex) {
-            play(at: nextIndex)
+            play(at: nextIndex, manual: manual)
         } else if repeatMode == .all {
-            play(at: 0)
+            play(at: 0, manual: manual)
         } else {
             stop()
         }
     }
 
-    func previous() {
+    func previous(manual: Bool = true) {
         guard let currentIndex else { return }
         // 播放超过 3 秒：回到开头；否则上一首
         if currentTime > 3 {
@@ -137,7 +190,7 @@ final class PlayerService: ObservableObject {
         }
         let prevIndex = currentIndex - 1
         if queue.indices.contains(prevIndex) {
-            play(at: prevIndex)
+            play(at: prevIndex, manual: manual)
         } else {
             seek(to: 0)
         }
@@ -170,7 +223,7 @@ final class PlayerService: ObservableObject {
         guard let currentIndex else { return }
         let next = currentIndex + 1
         if queue.indices.contains(next) {
-            play(at: next)
+            play(at: next, manual: false)
         } else {
             stop()
         }
@@ -183,10 +236,10 @@ final class PlayerService: ObservableObject {
             isPlaying = true
             return
         }
-        next()
+        next(manual: false)
     }
 
-    private func playNextShuffled() {
+    private func playNextShuffled(manual: Bool = true) {
         if shuffledOrder.isEmpty {
             shuffledOrder = Array(queue.indices).shuffled()
             if let currentIndex {
@@ -197,10 +250,10 @@ final class PlayerService: ObservableObject {
         if shuffledPosition < shuffledOrder.count {
             let index = shuffledOrder[shuffledPosition]
             shuffledPosition += 1
-            play(at: index)
+            play(at: index, manual: manual)
         } else if repeatMode == .all {
             shuffledOrder = []
-            next()
+            next(manual: manual)
         } else {
             stop()
         }

@@ -13,27 +13,50 @@ struct RecentPlay: Codable, Identifiable, Equatable {
 }
 
 /// 本地曲库：喜欢的歌、最近播放、导入的本地音频。全部只存本机 UserDefaults。
+/// 网络曲目元数据也缓存一份（只存标题/歌手/封面 URL/平台 ID，不存播放地址——
+/// 地址会过期，每次播都重新解析），最近 100 首。
 @MainActor
 final class LibraryStore: ObservableObject {
     @Published private(set) var localTracks: [Track] = []
     @Published private(set) var likedTrackIDs: [String] = []
     @Published private(set) var recentPlays: [RecentPlay] = []
+    /// 最近 100 首网络曲目元数据（去重：同平台同 ID 只留一条）。
+    @Published private(set) var cachedNetworkTracks: [Track] = []
 
     private let likedKey = "haoMusic.likedTrackIDs"
     private let recentKey = "haoMusic.recentPlays"
     private let localKey = "haoMusic.localTracks"
+    private let networkCacheKey = "haoMusic.cachedNetworkTracks"
     private let maxRecentCount = 50
+    private let maxNetworkCacheCount = 100
 
     init() {
         load()
     }
 
     var likedTracks: [Track] {
-        localTracks.filter { likedTrackIDs.contains($0.id) }
+        allKnownTracks.filter { likedTrackIDs.contains($0.id) }
     }
 
     var recentTracks: [Track] {
-        recentPlays.compactMap { play in localTracks.first { $0.id == play.trackID } }
+        recentPlays.compactMap { play in allKnownTracks.first { $0.id == play.trackID } }
+    }
+
+    /// 本地 + 已缓存的网络曲目（最近播放/喜欢按 ID 找歌时都从这里找）。
+    private var allKnownTracks: [Track] {
+        localTracks + cachedNetworkTracks
+    }
+
+    func cacheNetworkTrack(_ track: Track) {
+        guard track.localFileURL == nil else { return }
+        cachedNetworkTracks.removeAll {
+            $0.id == track.id || ($0.source == track.source && $0.providerItemID == track.providerItemID)
+        }
+        cachedNetworkTracks.insert(track, at: 0)
+        if cachedNetworkTracks.count > maxNetworkCacheCount {
+            cachedNetworkTracks = Array(cachedNetworkTracks.prefix(maxNetworkCacheCount))
+        }
+        saveArray(cachedNetworkTracks, key: networkCacheKey)
     }
 
     func isLiked(_ track: Track) -> Bool {
@@ -79,6 +102,7 @@ final class LibraryStore: ObservableObject {
         localTracks = loadArray(key: localKey)
         likedTrackIDs = loadArray(key: likedKey)
         recentPlays = loadArray(key: recentKey)
+        cachedNetworkTracks = loadArray(key: networkCacheKey)
     }
 
     private func saveLikes() {

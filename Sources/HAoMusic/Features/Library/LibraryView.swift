@@ -20,7 +20,7 @@ struct LibraryView: View {
                         ForEach(library.localTracks) { track in
                             TrackRow(track: track, onPlay: {
                                 if let index = library.localTracks.firstIndex(of: track) {
-                                    player.play(tracks: library.localTracks, startAt: index)
+                                    player.play(tracks: library.localTracks, startAt: index, source: .library)
                                 }
                                 library.recordPlayed(track)
                             })

@@ -4,10 +4,12 @@ import SwiftUI
 struct PlayerView: View {
     @EnvironmentObject private var player: PlayerService
     @EnvironmentObject private var library: LibraryStore
+    @EnvironmentObject private var musicService: HaoMusicService
     @Environment(\.dismiss) private var dismiss
     @State private var showLyrics = false
     @State private var isSeeking = false
     @State private var seekValue: Double = 0
+    @State private var lyricLines: [LyricsLine] = []
 
     var body: some View {
         NavigationStack {
@@ -23,6 +25,31 @@ struct PlayerView: View {
                             .font(.body)
                             .foregroundStyle(.secondary)
                             .lineLimit(1)
+                    }
+                    // 解析状态 / 实测档位徽标（只报实测来源与档位，不谎报）。
+                    if let item = player.currentItem {
+                        if player.resolvingTrackID == item.id {
+                            HStack(spacing: 6) {
+                                ProgressView()
+                                    .controlSize(.small)
+                                Text("正在解析播放地址…")
+                            }
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                        } else if let quality = item.resolvedQuality {
+                            Text(sourceBadgeText(item: item, quality: quality))
+                                .font(.caption2)
+                                .fontWeight(.semibold)
+                                .padding(.horizontal, 8)
+                                .padding(.vertical, 3)
+                                .background(Capsule().fill(HaoMusicDesign.accent.opacity(0.12)))
+                                .foregroundStyle(HaoMusicDesign.accent)
+                        }
+                        if let error = player.resolveError {
+                            Text(error)
+                                .font(.caption)
+                                .foregroundStyle(.red)
+                        }
                     }
                     VStack(spacing: 4) {
                         Slider(
@@ -77,8 +104,7 @@ struct PlayerView: View {
                     }
                     .font(.title3)
                     if showLyrics {
-                        // v1 歌词数据还没接：先放空壳，点歌词行跳转的逻辑已在 LyricsView 里
-                        LyricsView(lines: [], currentTime: player.currentTime, onSeek: { player.seek(to: $0) })
+                        LyricsView(lines: lyricLines, currentTime: player.currentTime, onSeek: { player.seek(to: $0) })
                     }
                 } else {
                     VStack(spacing: 12) {
@@ -87,7 +113,7 @@ struct PlayerView: View {
                             .foregroundStyle(.secondary)
                         Text("没有正在播放")
                             .font(.headline)
-                        Text("先从资料库导入本地音频，或从首页点一首歌。")
+                        Text("先从搜索页搜一首歌，或从资料库导入本地音频。")
                             .font(.callout)
                             .foregroundStyle(.secondary)
                     }
@@ -97,6 +123,12 @@ struct PlayerView: View {
             }
             .padding(.horizontal, HaoMusicDesign.horizontalPadding)
             .navigationBarTitleDisplayMode(.inline)
+            .task(id: player.currentItem?.id) {
+                lyricLines = []
+                guard let track = player.currentItem?.track else { return }
+                guard let lrc = await musicService.lyrics(for: track) else { return }
+                lyricLines = LyricsParser.parse(lrc: lrc)
+            }
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
                     Button(action: { dismiss() }) {
@@ -104,6 +136,17 @@ struct PlayerView: View {
                     }
                 }
             }
+        }
+    }
+
+    private func sourceBadgeText(item: PlaybackItem, quality: AudioQuality) -> String {
+        switch item.resolvedSource {
+        case .provider(let provider):
+            return "\(provider.displayName) · \(quality.bitrateLabel)"
+        case .unlock(let source):
+            return "\(source.displayName)解锁 · \(quality.bitrateLabel)"
+        case .local, .none:
+            return quality.bitrateLabel
         }
     }
 
