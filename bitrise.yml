@@ -76,6 +76,6 @@ workflows:
             # and fails on unsigned builds (no embedded.mobileprovision).
             # Ship the same bytes as a .zip — an IPA is a zip — so it
             # uploads as a generic file; rename back to .ipa after download.
-            cp HAoMusic.ipa "$BITRISE_DEPLOY_DIR/HAoMusic-v0.1.1.zip"
+            cp HAoMusic.ipa "$BITRISE_DEPLOY_DIR/HAoMusic-v0.1.2.zip"
             ls -lh "$BITRISE_DEPLOY_DIR/"
     - deploy-to-bitrise-io@2: {}
