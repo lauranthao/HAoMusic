@@ -13,8 +13,10 @@ import Foundation
 struct NeteaseProvider: MusicProviderClient {
     let provider: MusicProvider = .netease
     private let session: URLSession
+    /// 登录态才有的 Cookie（MUSIC_U 等）。未登录时为 nil，请求与匿名时一字不差。
+    private let cookieProvider: (@Sendable () -> String?)?
 
-    init(session: URLSession? = nil) {
+    init(session: URLSession? = nil, cookieProvider: (@Sendable () -> String?)? = nil) {
         if let session {
             self.session = session
         } else {
@@ -23,6 +25,7 @@ struct NeteaseProvider: MusicProviderClient {
             config.httpAdditionalHeaders = NeteaseCrypto.defaultHeaders()
             self.session = URLSession(configuration: config)
         }
+        self.cookieProvider = cookieProvider
     }
 
     // MARK: - 搜索
@@ -93,6 +96,15 @@ struct NeteaseProvider: MusicProviderClient {
 
     // MARK: - 内部
 
+    /// 登录态才给请求加 Cookie 头；未登录返回原请求（匿名行为一字不差）。
+    /// 内部方法，供 harness 验登录/匿名请求的差别。
+    func requestWithSessionHeaders(_ request: URLRequest) -> URLRequest {
+        guard let cookie = cookieProvider?(), !cookie.isEmpty else { return request }
+        var request = request
+        request.setValue(cookie, forHTTPHeaderField: "Cookie")
+        return request
+    }
+
     private func postEAPI(path: String, cryptoURL: String, object: [String: Any]) async throws -> Data {
         guard let params = NeteaseCrypto.eapiParams(url: cryptoURL, object: object) else {
             throw ResolveError.hard("网易请求加密失败")
@@ -102,6 +114,7 @@ struct NeteaseProvider: MusicProviderClient {
         }
         var request = URLRequest(url: url)
         request.httpMethod = "POST"
+        request = requestWithSessionHeaders(request)
         request.setValue(
             "application/x-www-form-urlencoded", forHTTPHeaderField: "Content-Type")
         request.httpBody = params["params"].map {

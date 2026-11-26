@@ -14,8 +14,17 @@ struct QQProvider: MusicProviderClient {
     let provider: MusicProvider = .qq
     private let session: URLSession
     private let guid: String
+    /// 登录态才有的 Cookie（uin/skey/p_skey 等）。未登录时为 nil，请求与匿名时一字不差。
+    private let cookieProvider: (@Sendable () -> String?)?
+    /// 登录态才有的真实 uin；未登录回落到 "0"。
+    private let uinProvider: (@Sendable () -> String?)?
 
-    init(session: URLSession? = nil, guid: String? = nil) {
+    init(
+        session: URLSession? = nil,
+        guid: String? = nil,
+        cookieProvider: (@Sendable () -> String?)? = nil,
+        uinProvider: (@Sendable () -> String?)? = nil
+    ) {
         if let session {
             self.session = session
         } else {
@@ -38,6 +47,8 @@ struct QQProvider: MusicProviderClient {
             UserDefaults.standard.set(generated, forKey: "haoMusic.qqGuid")
             self.guid = generated
         }
+        self.cookieProvider = cookieProvider
+        self.uinProvider = uinProvider
     }
 
     // MARK: - 搜索
@@ -131,9 +142,11 @@ struct QQProvider: MusicProviderClient {
 
     // MARK: - 内部
 
-    /// GetVkeyServer：按文件名取流。匿名返回 500005（无 data），按无地址处理，不抛错。
-    private func getVkeyServer(songmid: String, filename: String) async throws -> SongURLResult? {
-        let payload: [String: Any] = [
+    /// GetVkeyServer 请求体（内部方法，供 harness 验登录/匿名 uin 的差别）。
+    /// 匿名：param.uin "0"、comm.uin 0；登录：真实 uin。
+    func vkeyPayload(songmid: String, filename: String) -> [String: Any] {
+        let uin = uinProvider?() ?? "0"
+        return [
             "req_0": [
                 "module": "vkey.GetVkeyServer",
                 "method": "GetVkeyServer",
@@ -141,14 +154,40 @@ struct QQProvider: MusicProviderClient {
                     "guid": guid,
                     "songmid": [songmid],
                     "songtype": [0],
-                    "uin": "0",
+                    "uin": uin,
                     "loginflag": 1,
                     "platform": "20",
                     "filename": [filename],
                 ],
             ],
-            "comm": ["uin": 0, "format": "json", "ct": 24, "cv": 0],
+            "comm": ["uin": Int(uin) ?? 0, "format": "json", "ct": 24, "cv": 0],
         ]
+    }
+
+    /// CgiGetVkey 请求体（内部方法，供 harness 验登录/匿名 uin 的差别）。
+    func cgiGetVkeyPayload(songmid: String) -> [String: Any] {
+        let uin = uinProvider?() ?? "0"
+        return [
+            "req_0": [
+                "module": "vkey.GetVkeyServer",
+                "method": "CgiGetVkey",
+                "param": [
+                    "guid": guid,
+                    "songmid": [songmid],
+                    "songtype": [0],
+                    "uin": uin,
+                    "loginflag": 1,
+                    "platform": "20",
+                ],
+            ],
+            "comm": ["uin": Int(uin) ?? 0, "format": "json", "ct": 24, "cv": 0],
+        ]
+    }
+
+    /// GetVkeyServer：按文件名取流。匿名返回 500005（无 data），按无地址处理，不抛错。
+    /// 登录时带真实 uin + Cookie，服务端按账号给档位；匿名时 uin 仍是 "0"/0，与原来一字不差。
+    private func getVkeyServer(songmid: String, filename: String) async throws -> SongURLResult? {
+        let payload = vkeyPayload(songmid: songmid, filename: filename)
         guard let data = try? JSONSerialization.data(withJSONObject: payload, options: []),
               let dataString = String(data: data, encoding: .utf8) else { return nil }
         var components = URLComponents(string: "https://u.y.qq.com/cgi-bin/musicu.fcg")
@@ -175,30 +214,18 @@ struct QQProvider: MusicProviderClient {
     }
 
     /// CgiGetVkey：匿名可通，返回默认 C400 文件（128K m4a）。
+    /// 登录时带真实 uin + Cookie；匿名时与原来一字不差。
     private func cgiGetVkey(songmid: String) async throws -> SongURLResult? {
-        let payload: [String: Any] = [
-            "req_0": [
-                "module": "vkey.GetVkeyServer",
-                "method": "CgiGetVkey",
-                "param": [
-                    "guid": guid,
-                    "songmid": [songmid],
-                    "songtype": [0],
-                    "uin": "0",
-                    "loginflag": 1,
-                    "platform": "20",
-                ],
-            ],
-            "comm": ["uin": 0, "format": "json", "ct": 24, "cv": 0],
-        ]
+        let uin = uinProvider?() ?? "0"
+        let payload = cgiGetVkeyPayload(songmid: songmid)
         guard let data = try? JSONSerialization.data(withJSONObject: payload, options: []),
               let dataString = String(data: data, encoding: .utf8) else { return nil }
         var components = URLComponents(string: "https://u.y.qq.com/cgi-bin/musicu.fcg")
         components?.queryItems = [
             URLQueryItem(name: "-", value: "getplaysongvkey2682247447678878"),
             URLQueryItem(name: "g_tk", value: "5381"),
-            URLQueryItem(name: "loginUin", value: "0"),
-            URLQueryItem(name: "hostUin", value: "0"),
+            URLQueryItem(name: "loginUin", value: uin),
+            URLQueryItem(name: "hostUin", value: uin),
             URLQueryItem(name: "format", value: "json"),
             URLQueryItem(name: "inCharset", value: "utf8"),
             URLQueryItem(name: "outCharset", value: "utf-8"),
@@ -232,8 +259,9 @@ struct QQProvider: MusicProviderClient {
     }
 
     private func get(url: URL) async throws -> Data {
+        let request = requestWithSessionHeaders(URLRequest(url: url))
         do {
-            let (data, response) = try await session.data(from: url)
+            let (data, response) = try await session.data(for: request)
             guard let http = response as? HTTPURLResponse, http.statusCode == 200 else {
                 throw ResolveError.hard("QQ 请求失败")
             }
@@ -241,6 +269,15 @@ struct QQProvider: MusicProviderClient {
         } catch {
             throw ResolveErrorClassifier.classify(error)
         }
+    }
+
+    /// 登录态才给请求加 Cookie 头；未登录返回原请求（匿名行为一字不差）。
+    /// 内部方法，供 harness 验登录/匿名请求的差别。
+    func requestWithSessionHeaders(_ request: URLRequest) -> URLRequest {
+        guard let cookie = cookieProvider?(), !cookie.isEmpty else { return request }
+        var request = request
+        request.setValue(cookie, forHTTPHeaderField: "Cookie")
+        return request
     }
 
     /// JSONP 去壳：取第一个 "{" 到最后一个 "}" 之间的内容。

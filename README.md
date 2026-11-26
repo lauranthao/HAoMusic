@@ -72,16 +72,39 @@ Sources/HAoMusic/
       KugouUnlockProvider.swift、KuwoUnlockProvider.swift、UnlockMatching.swift（候选打分）
       UnlockService.swift（镜像→酷狗→酷我竞速）、FailureMemory.swift、PlaybackResolver.swift
       HaoMusicService.swift（门面 + 合并搜索 + HaoSongMerger）
+      LoginSession.swift（会话/扫码状态机/Cookie 工具/会话盒子）、SessionStore.swift（钥匙串）
+      NeteaseLoginService.swift + QQLoginService.swift（扫码登录）、LoginSessionManager.swift（登录态）
   DesignSystem/   DesignTokens.swift
   Features/
     Home/         HomeView.swift（最近播放、我喜欢的）
     Search/       SearchView.swift（合并搜索：网络 + 本地，平台徽标行）
     Library/      LibraryView.swift（导入/删除本地音频）+ AudioImportPicker
     Player/       PlayerView.swift（解析状态/档位徽标/歌词拉取）、MiniPlayerBar.swift、LyricsView.swift
-    Settings/     SettingsView.swift（音质/音源/解锁/镜像地址）
+    Settings/     SettingsView.swift（账号/音质/音源/解锁/镜像地址）
+                  AccountView.swift（账号页）、LoginQRView.swift（扫码登录页）
     Shared/       TrackCoverView.swift（AsyncImage + 占位）、TrackRow.swift
   Resources/      Info.plist、Assets.xcassets（AppIcon + AccentColor）
 ```
+
+## 登录（免费账号扫码登录，2026-11-26）
+
+- 设置 → 账号：网易云 / QQ 音乐扫码登录（官方 App 扫码），不存密码，不卖会员。
+- 网易：unikey → 二维码 → 轮询（801 等待 / 802 已扫 / 803 成功带 cookie / 800 过期）→
+  `/api/nuser/account/get` 取资料；QQ：ptqrshow 取图 + qrsig → ptqrlogin 轮询
+  （ptuiCB '66' 等待 / '67' 已扫 / '0' 成功 / '65' 过期，hash33 算 ptqrtoken，
+  成功后跟一次跳转链接收齐 cookie）→ 资料页取昵称头像（不通就用扫码回调的昵称 + qlogo 头像兜底）。
+- 会话存钥匙串（通用密码项，account = 平台；Linux 测试宿主走 UserDefaults 后备），
+  启动恢复：网易走服务端校验（明确拒绝才清，网络瞬断不断登录），QQ 走结构检查（uin + skey）。
+  180 天软过期。退出登录清钥匙串 + 内存态。
+- 取流接线：登录后网易 eapi 请求带 Cookie 头，QQ vkey 请求带真实 uin + Cookie 头，
+  服务端按账号给档位；未登录时请求与匿名时一字不差（降档 + 解锁照旧）。
+- 验证：Linux harness（`~/workspace/.tmp/haomusic-login-harness/`）**100 项全过**：
+  扫码状态机、ptqrtoken（hash33 手算向量）、Cookie 解析/合并、登录解析（unikey/二维码/check/资料、
+  ptuiCB/资料页）、会话编解码与存储往返、登录/匿名请求差别（Cookie 头有无、uin "0" 与真实 uin）、
+  管理器恢复删除路径与退出。harness 抓到 2 个真 bug：ptqrtoken 整数溢出 trap（改 wrapping 运算）、
+  ptuiCB 非成功状态只有 5 个参数（改 >= 5 + trim）。
+- **未验**：真扫码登录（只能在真机上用官方 App 扫）、登录后高档位取流（需国内真机或登录后验证）、
+  Xcode 构建（本机无 Xcode，GitHub Actions 第一轮排不到 macOS 机器，Bitrise 备用）。
 
 ## 构建
 

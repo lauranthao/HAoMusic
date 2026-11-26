@@ -31,6 +31,10 @@
 		E4F05B3D5C08D929BD2CED42 = {isa = PBXBuildFile; fileRef = A5E33CD6AD56DA7007399B2E; };
 		3C39A7CA3C09D630983F0C97 = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = KuwoUnlockProvider.swift; sourceTree = "<group>"; };
 		0DED9D7DD69340CF81B1234D = {isa = PBXBuildFile; fileRef = 3C39A7CA3C09D630983F0C97; };
+		41836CB8FC0C3F0C2E94CA9A = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LoginSession.swift; sourceTree = "<group>"; };
+		772FF4C58AEFE98B9D8D617D = {isa = PBXBuildFile; fileRef = 41836CB8FC0C3F0C2E94CA9A; };
+		CD380AE94842ED9863B3A5FB = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LoginSessionManager.swift; sourceTree = "<group>"; };
+		54CAE6EAB801C75C90A46F46 = {isa = PBXBuildFile; fileRef = CD380AE94842ED9863B3A5FB; };
 		2F1C65FA158BCBF4F16C131C = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MD5.swift; sourceTree = "<group>"; };
 		F1B149EBF7A6506F1F3DA648 = {isa = PBXBuildFile; fileRef = 2F1C65FA158BCBF4F16C131C; };
 		C7C420C6B1C71E4CEC94F8F0 = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MusicProvider.swift; sourceTree = "<group>"; };
@@ -41,6 +45,8 @@
 		87B0E3EBBB17BC44FCD4A7D4 = {isa = PBXBuildFile; fileRef = AC3CC8262D5F1AA27406CAEC; };
 		0AD349FE04D18F72A3051830 = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NeteaseCrypto.swift; sourceTree = "<group>"; };
 		BC399DE8AA9C02D9186600D6 = {isa = PBXBuildFile; fileRef = 0AD349FE04D18F72A3051830; };
+		339E2EEAB0FCCECDC267D8B2 = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NeteaseLoginService.swift; sourceTree = "<group>"; };
+		387FD06CE5B04E6727357046 = {isa = PBXBuildFile; fileRef = 339E2EEAB0FCCECDC267D8B2; };
 		C74F1D9E5F72B24E31AF27EC = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NeteaseProvider.swift; sourceTree = "<group>"; };
 		C194C349140CF0290CF2894B = {isa = PBXBuildFile; fileRef = C74F1D9E5F72B24E31AF27EC; };
 		C9A6345C1DF2AEBE1B60BDDB = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PlaySource.swift; sourceTree = "<group>"; };
@@ -49,8 +55,12 @@
 		6FCFC1028CC98BCB2023A779 = {isa = PBXBuildFile; fileRef = CF71DD29EFE0B34BA1DEF605; };
 		EAAFA147115DA0A3D0C64064 = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProviderSong.swift; sourceTree = "<group>"; };
 		42C70BD921D234DB8C404B1B = {isa = PBXBuildFile; fileRef = EAAFA147115DA0A3D0C64064; };
+		980C678D7ED496F4A1318F47 = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = QQLoginService.swift; sourceTree = "<group>"; };
+		AACECF1897D1435DCCD649EC = {isa = PBXBuildFile; fileRef = 980C678D7ED496F4A1318F47; };
 		F894010594E83B8BA7832D47 = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = QQProvider.swift; sourceTree = "<group>"; };
 		A47B7F6C451AB9C194E6C244 = {isa = PBXBuildFile; fileRef = F894010594E83B8BA7832D47; };
+		DC22BFFE98A5B1CE192259B0 = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SessionStore.swift; sourceTree = "<group>"; };
+		532EB77C7028478E2EE6E1A9 = {isa = PBXBuildFile; fileRef = DC22BFFE98A5B1CE192259B0; };
 		F66A0C034C6D729E3DAC1F9F = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = UnlockMatching.swift; sourceTree = "<group>"; };
 		BD53D9130AC9A09F00DE4454 = {isa = PBXBuildFile; fileRef = F66A0C034C6D729E3DAC1F9F; };
 		599DDE4B1CA4E1FE3C666C1C = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = UnlockService.swift; sourceTree = "<group>"; };
@@ -71,6 +81,10 @@
 		32107F82EF5DB13D8260992F = {isa = PBXBuildFile; fileRef = D5574ADD7FD3C4867C901A40; };
 		D2D968FE5C4F2D070C9FCC95 = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SearchView.swift; sourceTree = "<group>"; };
 		813727B5399399D536F1A910 = {isa = PBXBuildFile; fileRef = D2D968FE5C4F2D070C9FCC95; };
+		68C7C5C37B221773F9987E9D = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AccountView.swift; sourceTree = "<group>"; };
+		7217ABBBF86664EC151CDF99 = {isa = PBXBuildFile; fileRef = 68C7C5C37B221773F9987E9D; };
+		E6775A126439D9DAB665A1E4 = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LoginQRView.swift; sourceTree = "<group>"; };
+		3D4E0E7821ED998D88F10E41 = {isa = PBXBuildFile; fileRef = E6775A126439D9DAB665A1E4; };
 		BAC015B6AC5E2036DC25C2A9 = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsView.swift; sourceTree = "<group>"; };
 		7078F07890D084C37A25E526 = {isa = PBXBuildFile; fileRef = BAC015B6AC5E2036DC25C2A9; };
 		66E485A955988AB439B26134 = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TrackCoverView.swift; sourceTree = "<group>"; };
@@ -81,13 +95,47 @@
 		594A6F42D9F6C8FC73D2F87B = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
 		BF2D281B7D7A9573167CDFC5 = {isa = PBXBuildFile; fileRef = 594A6F42D9F6C8FC73D2F87B; };
 		D158EB2F11B83701EF3B5B87 = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = HAoMusic.app; sourceTree = BUILT_PRODUCTS_DIR; };
-		E119206CB3B04C46F2302964 = {
+		5B15ECD23FB79F3AB5C8568A = {
 			isa = PBXGroup;
 			children = (
-				D2D968FE5C4F2D070C9FCC95,
+				094F5241D2DF93AC3E1544AD,
+				532190931202CEA835C7340E,
+				4AC17BD4CA70A22F8C60064F,
+				F3CF649183A0EA2B20EBD636,
+				422416519188AC397648EB89,
+				A5E33CD6AD56DA7007399B2E,
+				3C39A7CA3C09D630983F0C97,
+				41836CB8FC0C3F0C2E94CA9A,
+				CD380AE94842ED9863B3A5FB,
+				2F1C65FA158BCBF4F16C131C,
+				C7C420C6B1C71E4CEC94F8F0,
+				9EBDB457C0EFFC9ED10B2D24,
+				AC3CC8262D5F1AA27406CAEC,
+				0AD349FE04D18F72A3051830,
+				339E2EEAB0FCCECDC267D8B2,
+				C74F1D9E5F72B24E31AF27EC,
+				C9A6345C1DF2AEBE1B60BDDB,
+				CF71DD29EFE0B34BA1DEF605,
+				EAAFA147115DA0A3D0C64064,
+				980C678D7ED496F4A1318F47,
+				F894010594E83B8BA7832D47,
+				DC22BFFE98A5B1CE192259B0,
+				F66A0C034C6D729E3DAC1F9F,
+				599DDE4B1CA4E1FE3C666C1C,
 			);
-			name = Search;
-			path = Search;
+			name = Sources;
+			path = Sources;
+			sourceTree = "<group>";
+		};
+		69D8C06112BCE9F2F52562D7 = {
+			isa = PBXGroup;
+			children = (
+				D9B369A94E5C0A12523BFC4A,
+				9E316A034D84497120260450,
+				D5574ADD7FD3C4867C901A40,
+			);
+			name = Player;
+			path = Player;
 			sourceTree = "<group>";
 		};
 		54A2D6255F6257EC476C99F9 = {
@@ -99,13 +147,22 @@
 			path = Storage;
 			sourceTree = "<group>";
 		};
-		C140C8CFAA78E6D936D59437 = {
+		A300358237A56F0FF521ADD4 = {
 			isa = PBXGroup;
 			children = (
-				4CDFCF8A13075675D4A96B0C,
+				44D1F6526257C8D59E569235,
 			);
-			name = Home;
-			path = Home;
+			name = Library;
+			path = Library;
+			sourceTree = "<group>";
+		};
+		E119206CB3B04C46F2302964 = {
+			isa = PBXGroup;
+			children = (
+				D2D968FE5C4F2D070C9FCC95,
+			);
+			name = Search;
+			path = Search;
 			sourceTree = "<group>";
 		};
 		B38C493CBA194C0570792726 = {
@@ -119,13 +176,15 @@
 			path = Player;
 			sourceTree = "<group>";
 		};
-		A300358237A56F0FF521ADD4 = {
+		FAA0DB5968FBE48B20F74E63 = {
 			isa = PBXGroup;
 			children = (
-				44D1F6526257C8D59E569235,
+				68C7C5C37B221773F9987E9D,
+				E6775A126439D9DAB665A1E4,
+				BAC015B6AC5E2036DC25C2A9,
 			);
-			name = Library;
-			path = Library;
+			name = Settings;
+			path = Settings;
 			sourceTree = "<group>";
 		};
 		7C5C6239D18BC4D11074C4E5 = {
@@ -147,73 +206,13 @@
 			path = Models;
 			sourceTree = "<group>";
 		};
-		5B15ECD23FB79F3AB5C8568A = {
+		C140C8CFAA78E6D936D59437 = {
 			isa = PBXGroup;
 			children = (
-				094F5241D2DF93AC3E1544AD,
-				532190931202CEA835C7340E,
-				4AC17BD4CA70A22F8C60064F,
-				F3CF649183A0EA2B20EBD636,
-				422416519188AC397648EB89,
-				A5E33CD6AD56DA7007399B2E,
-				3C39A7CA3C09D630983F0C97,
-				2F1C65FA158BCBF4F16C131C,
-				C7C420C6B1C71E4CEC94F8F0,
-				9EBDB457C0EFFC9ED10B2D24,
-				AC3CC8262D5F1AA27406CAEC,
-				0AD349FE04D18F72A3051830,
-				C74F1D9E5F72B24E31AF27EC,
-				C9A6345C1DF2AEBE1B60BDDB,
-				CF71DD29EFE0B34BA1DEF605,
-				EAAFA147115DA0A3D0C64064,
-				F894010594E83B8BA7832D47,
-				F66A0C034C6D729E3DAC1F9F,
-				599DDE4B1CA4E1FE3C666C1C,
+				4CDFCF8A13075675D4A96B0C,
 			);
-			name = Sources;
-			path = Sources;
-			sourceTree = "<group>";
-		};
-		FAA0DB5968FBE48B20F74E63 = {
-			isa = PBXGroup;
-			children = (
-				BAC015B6AC5E2036DC25C2A9,
-			);
-			name = Settings;
-			path = Settings;
-			sourceTree = "<group>";
-		};
-		69D8C06112BCE9F2F52562D7 = {
-			isa = PBXGroup;
-			children = (
-				D9B369A94E5C0A12523BFC4A,
-				9E316A034D84497120260450,
-				D5574ADD7FD3C4867C901A40,
-			);
-			name = Player;
-			path = Player;
-			sourceTree = "<group>";
-		};
-		83945F5507549F1F9049F7E3 = {
-			isa = PBXGroup;
-			children = (
-				ED4E2EB04849D716CE453775,
-				594A6F42D9F6C8FC73D2F87B,
-			);
-			name = Resources;
-			path = Resources;
-			sourceTree = "<group>";
-		};
-		0C529C1E69EDAA70CE43B0A9 = {
-			isa = PBXGroup;
-			children = (
-				5D9C80795207F6EB4A86B45E,
-				B38C493CBA194C0570792726,
-				5B15ECD23FB79F3AB5C8568A,
-				54A2D6255F6257EC476C99F9,
-			);
-			name = Core;
-			path = Core;
+			name = Home;
+			path = Home;
 			sourceTree = "<group>";
 		};
 		9FEFC34B40556EF7D7F5915A = {
@@ -240,6 +239,16 @@
 			path = App;
 			sourceTree = "<group>";
 		};
+		83945F5507549F1F9049F7E3 = {
+			isa = PBXGroup;
+			children = (
+				ED4E2EB04849D716CE453775,
+				594A6F42D9F6C8FC73D2F87B,
+			);
+			name = Resources;
+			path = Resources;
+			sourceTree = "<group>";
+		};
 		A4A85CB640FB2A606CF08031 = {
 			isa = PBXGroup;
 			children = (
@@ -247,6 +256,18 @@
 			);
 			name = DesignSystem;
 			path = DesignSystem;
+			sourceTree = "<group>";
+		};
+		0C529C1E69EDAA70CE43B0A9 = {
+			isa = PBXGroup;
+			children = (
+				5D9C80795207F6EB4A86B45E,
+				B38C493CBA194C0570792726,
+				5B15ECD23FB79F3AB5C8568A,
+				54A2D6255F6257EC476C99F9,
+			);
+			name = Core;
+			path = Core;
 			sourceTree = "<group>";
 		};
 		44D2CCE54A66785CB310A187 = {
@@ -281,16 +302,21 @@
 				B47722FC43632DAC479FCA22,,
 				E4F05B3D5C08D929BD2CED42,,
 				0DED9D7DD69340CF81B1234D,,
+				772FF4C58AEFE98B9D8D617D,,
+				54CAE6EAB801C75C90A46F46,,
 				F1B149EBF7A6506F1F3DA648,,
 				A9261EE77F4CFC41CDCF1BE0,,
 				0A0C350258EFF277CD55CAD9,,
 				87B0E3EBBB17BC44FCD4A7D4,,
 				BC399DE8AA9C02D9186600D6,,
+				387FD06CE5B04E6727357046,,
 				C194C349140CF0290CF2894B,,
 				F3E494241C47FF228117ED21,,
 				6FCFC1028CC98BCB2023A779,,
 				42C70BD921D234DB8C404B1B,,
+				AACECF1897D1435DCCD649EC,,
 				A47B7F6C451AB9C194E6C244,,
+				532EB77C7028478E2EE6E1A9,,
 				BD53D9130AC9A09F00DE4454,,
 				BA9F1912F359D46499413BC1,,
 				5F0F84C7B15EA05DEEBAA078,,
@@ -301,6 +327,8 @@
 				F3976AE55BBFA64F54775976,,
 				32107F82EF5DB13D8260992F,,
 				813727B5399399D536F1A910,,
+				7217ABBBF86664EC151CDF99,,
+				3D4E0E7821ED998D88F10E41,,
 				7078F07890D084C37A25E526,,
 				8147C8707597556AA3F8B006,,
 				3370A12FAD974F7F5849B869,

@@ -1,13 +1,22 @@
 import SwiftUI
 
-/// 设置：目标音质、音源开关、解锁开关、镜像地址。
-/// 无登录：登录相关功能（每日推荐、电台、歌单同步）本期没有，不放假开关。
+/// 设置：账号、目标音质、音源开关、解锁开关、镜像地址。
+/// 登录相关功能（每日推荐、电台、歌单同步）本期没有，不放假开关。
 struct SettingsView: View {
     @EnvironmentObject private var settings: MusicSettings
+    @EnvironmentObject private var loginManager: LoginSessionManager
 
     var body: some View {
         NavigationStack {
             List {
+                Section("账号") {
+                    NavigationLink("账号与登录") {
+                        AccountView()
+                    }
+                    Text(accountSummary)
+                        .font(.callout)
+                        .foregroundStyle(.secondary)
+                }
                 Section("播放") {
                     Picker("目标音质", selection: $settings.targetQuality) {
                         ForEach(AudioQuality.allCases, id: \.self) { quality in
@@ -65,5 +74,14 @@ struct SettingsView: View {
             }
             .navigationTitle("设置")
         }
+    }
+
+    private var accountSummary: String {
+        [MusicProvider.netease, .qq].map { provider in
+            if let profile = loginManager.profile(for: provider) {
+                return "\(provider.displayName)：已登录（\(profile.nickname)）"
+            }
+            return "\(provider.displayName)：未登录"
+        }.joined(separator: " · ")
     }
 }
