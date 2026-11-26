@@ -37,6 +37,10 @@ struct SettingsSheet: View {
                         }
                     case .soundEffects:
                         SoundEffectsPage()
+                    case .licenses:
+                        OpenSourceLicensesView()
+                    case .wallpaper:
+                        WallpaperSettingsView()
                     }
                 }
         }
@@ -54,10 +58,12 @@ struct SettingsView: View {
     @State private var navigationPath: [SettingsPage] = []
     #endif
 
-    fileprivate enum SettingsPage: Hashable {
+    enum SettingsPage: Hashable {
         case storage
+        case licenses
         #if os(iOS)
         case soundEffects
+        case wallpaper
         #endif
         #if os(macOS)
         case shortcuts
@@ -214,6 +220,16 @@ struct SettingsView: View {
                         .foregroundStyle(.secondary)
                     }
                 }
+                #if os(iOS)
+                NavigationLink(value: SettingsPage.wallpaper) {
+                    HStack {
+                        Text("壁纸")
+                        Spacer()
+                        Text(wallpaperSummary)
+                            .foregroundStyle(.secondary)
+                    }
+                }
+                #endif
                 #if os(macOS)
                 Toggle("桌面歌词", isOn: $settings.showDesktopLyrics)
                 if settings.showDesktopLyrics {
@@ -257,53 +273,10 @@ struct SettingsView: View {
                 }
             }
 
-            if showsUpdateControls {
-                Section("更新") {
-                    Toggle("启动时自动检查更新", isOn: $settings.autoCheckUpdates)
-                    Text("关闭后启动不再自动弹出更新提示，仍可手动检查更新")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                    #if os(iOS)
-                    if DistributionChannel.current == .sideload {
-                        Button {
-                            IOSUpdater.shared.check(interactive: true)
-                        } label: {
-                            Label("检查更新", systemImage: "arrow.triangle.2.circlepath")
-                        }
-                        Text("装有 TrollStore（巨魔）可在应用内一键自动安装；否则可下载 IPA 用侧载工具重装（登录状态与设置保留）")
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
-                    }
-                    #endif
-                }
-            }
-
-            Section("关于") {
-                Button {
-                    showsDisclaimer = true
-                } label: {
-                    Label("查看完整免责声明", systemImage: "exclamationmark.shield")
-                }
-            }
-
-            Section {
-                VStack(spacing: 2) {
-                    Text("HAo Music")
-                        .font(.footnote)
-                        .foregroundStyle(.secondary)
-                    Text(appVersionAndBuild)
-                        .font(.caption2)
-                        .monospacedDigit()
-                        .foregroundStyle(.tertiary)
-                }
-                .frame(maxWidth: .infinity)
-                .padding(.top, 24)
-                .padding(.bottom, 32)
-                .accessibilityElement(children: .ignore)
-                .accessibilityLabel(appVersionAccessibilityLabel)
-                .listRowBackground(Color.clear)
-                .listRowSeparator(.hidden)
-            }
+            AboutSections(
+                info: HAoAboutInfo(version: appVersion, build: appBuild ?? "—"),
+                showsDisclaimer: $showsDisclaimer
+            )
         }
         .formStyle(.grouped)
         .sheet(isPresented: $showsDisclaimer) { DisclaimerView() }
@@ -317,6 +290,8 @@ struct SettingsView: View {
                     }
                 case .shortcuts:
                     ShortcutSettingsView()
+                case .licenses:
+                    OpenSourceLicensesView()
                 }
             }
             .navigationBarBackButtonHidden()
@@ -326,6 +301,7 @@ struct SettingsView: View {
                     switch page {
                     case .storage: Text("存储空间").font(.headline)
                     case .shortcuts: Text("快捷键").font(.headline)
+                    case .licenses: Text("开源许可与致谢").font(.headline)
                     }
                 }
             }
@@ -333,13 +309,10 @@ struct SettingsView: View {
         #endif
     }
 
-    /// Sparkle on macOS; on iOS only sideload builds carry an updater.
-    private var showsUpdateControls: Bool {
-        #if os(iOS)
-        return DistributionChannel.current.allowsSelfUpdate
-        #else
-        return true
-        #endif
+    /// "已开启" / "已关闭" / "未设置" for the wallpaper row.
+    private var wallpaperSummary: String {
+        if settings.wallpaperEnabled { return "已开启" }
+        return settings.wallpaperCurrent.isEmpty ? "未设置" : "已关闭"
     }
 
     private var appVersion: String {
@@ -348,19 +321,6 @@ struct SettingsView: View {
 
     private var appBuild: String? {
         Bundle.main.infoDictionary?["CFBundleVersion"] as? String
-    }
-
-    /// "0.1.0 (2)": version, then build in brackets, both read from the bundle.
-    private var appVersionAndBuild: String {
-        guard let build = appBuild, !build.isEmpty else { return appVersion }
-        return "\(appVersion) (\(build))"
-    }
-
-    private var appVersionAccessibilityLabel: String {
-        if let build = appBuild, !build.isEmpty {
-            return "HAo Music, version \(appVersion), build \(build)"
-        }
-        return "HAo Music, version \(appVersion)"
     }
 
 }

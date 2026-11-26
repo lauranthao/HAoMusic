@@ -7,7 +7,7 @@
 | 仓库 | 许可证 | 说明 |
 | --- | --- | --- |
 | [missuo/kumone](https://github.com/missuo/kumone) | LGPL-3.0（[LICENSE-LGPL-3.0.txt](../LICENSE-LGPL-3.0.txt)） | HAo Music 的上游项目，应用主体。保留原作者版权。 |
-| [Wow-CaiCai/Coda](https://github.com/Wow-CaiCai/Coda) | AGPL-3.0（[LICENSE-AGPL-3.0.txt](../LICENSE-AGPL-3.0.txt)） | QQ 音乐平台与灰歌并行解锁的参照。合并后的 HAo Music 按 AGPL-3.0 分发。 |
+| [Wow-CaiCai/Coda](https://github.com/Wow-CaiCai/Coda) | AGPL-3.0（[LICENSE](../LICENSE)） | QQ 音乐平台与灰歌并行解锁的参照。合并后的 HAo Music 按 AGPL-3.0 分发。 |
 
 ## 2. 集成或改编的代码
 

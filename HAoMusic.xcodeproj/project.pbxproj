@@ -345,6 +345,18 @@
 		2688B7F201638381F76B8D89 = {isa = PBXBuildFile; fileRef = CDB7411F81D555A7C69BB71E; };
 		1A780D2B35EA4167DF71F5E3 = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsView.swift; sourceTree = "<group>"; };
 		F58CCB943EB4721E2E8D6AB0 = {isa = PBXBuildFile; fileRef = 1A780D2B35EA4167DF71F5E3; };
+		7171AC70D7324A229FEF1D3F = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AboutView.swift; sourceTree = "<group>"; };
+		169514F1346740D8A107546C = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WallpaperSettingsView.swift; sourceTree = "<group>"; };
+		ED8C0BDCADAB49BE919BD98F = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WallpaperBackground.swift; sourceTree = "<group>"; };
+		43E5FDC109E0448C95375FEE = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WallpaperStore.swift; sourceTree = "<group>"; };
+		F957505529594607BCFB16FB = {isa = PBXFileReference; lastKnownFileType = text; path = LICENSE; sourceTree = SOURCE_ROOT; };
+		EFD9CE84E8C64392A807A47E = {isa = PBXFileReference; lastKnownFileType = text; path = LICENSE-LGPL-3.0.txt; sourceTree = SOURCE_ROOT; };
+		F89BC4C84050469A8BC4BCE4 = {isa = PBXBuildFile; fileRef = 7171AC70D7324A229FEF1D3F; };
+		5CE4EB7A574B4BCEB3779C10 = {isa = PBXBuildFile; fileRef = 169514F1346740D8A107546C; };
+		2EB94AAD412345F7BA3C6B70 = {isa = PBXBuildFile; fileRef = ED8C0BDCADAB49BE919BD98F; };
+		5102B4C8A5474B9C9838E401 = {isa = PBXBuildFile; fileRef = 43E5FDC109E0448C95375FEE; };
+		24030E9AA1BF41FF804AEE79 = {isa = PBXBuildFile; fileRef = F957505529594607BCFB16FB; };
+		68D5C42009DE4B829F8F18F0 = {isa = PBXBuildFile; fileRef = EFD9CE84E8C64392A807A47E; };
 		083D1C293F7150DE155BA259 = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ShortcutSettingsView.swift; sourceTree = "<group>"; };
 		A0D5C05CE56B25BEFDFCB2AF = {isa = PBXBuildFile; fileRef = 083D1C293F7150DE155BA259; };
 		8E7E3CA22543488AA1E05BEF = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StemModelsSettingsSection.swift; sourceTree = "<group>"; };
@@ -712,6 +724,7 @@
 				60586D096B6F18EC09BB5865,
 				25D514483482989B7447D485,
 				5C45221C19A3418F576756EA,
+				43E5FDC109E0448C95375FEE,
 			);
 			name = Storage;
 			path = Storage;
@@ -790,6 +803,8 @@
 				8E7E3CA22543488AA1E05BEF,
 				F8DE67D19E6135CEB9BBC4F9,
 				00956D8C47F52E9132B54495,
+				7171AC70D7324A229FEF1D3F,
+				169514F1346740D8A107546C,
 			);
 			name = Pages;
 			path = Pages;
@@ -841,6 +856,7 @@
 				9584CFA4920389F2683E34BF,
 				48D4782733FB4E9D8D0E574F,
 				4260BABD44D1680908976BD9,
+				ED8C0BDCADAB49BE919BD98F,
 			);
 			name = Shared;
 			path = Shared;
@@ -946,6 +962,8 @@
 				EB67B80889BBAC5EDCD24D01,
 				594A6F42D9F6C8FC73D2F87B,
 				31A6AD0B4AFF27530759AFF3,
+				F957505529594607BCFB16FB,
+				EFD9CE84E8C64392A807A47E,
 			);
 			name = Resources;
 			path = Resources;
@@ -1192,7 +1210,11 @@
 				C2274B92CF9E27081D61839E,
 				F7F59B0486C5DAFECBB70BE4,
 				0F144B0A96E9868E7EDAD10E,
-				35A8C464F98E83B312BED30D
+				35A8C464F98E83B312BED30D,
+				F89BC4C84050469A8BC4BCE4,
+				5CE4EB7A574B4BCEB3779C10,
+				2EB94AAD412345F7BA3C6B70,
+				5102B4C8A5474B9C9838E401,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -1209,6 +1231,8 @@
 			files = (
 				BF2D281B7D7A9573167CDFC5,
 				1492963717952B241BA59E23,
+				24030E9AA1BF41FF804AEE79,
+				68D5C42009DE4B829F8F18F0,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

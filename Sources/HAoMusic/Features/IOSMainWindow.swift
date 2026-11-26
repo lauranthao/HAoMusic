@@ -8,6 +8,7 @@ public struct IOSMainWindow: View {
     @StateObject private var toasts = ToastCenter.shared
     @StateObject private var updater = IOSUpdater.shared
     @StateObject private var artworkStore = NowPlayingArtworkStore()
+    @StateObject private var wallpaperLoader = WallpaperImageLoader.shared
     @Namespace private var nowPlayingTransition
     @Environment(\.colorScheme) private var systemColorScheme
     @Environment(\.scenePhase) private var scenePhase
@@ -60,6 +61,7 @@ public struct IOSMainWindow: View {
             .environment(\.openDestination, openDestination)
             .modifier(PlaybackLifecycle())
             .task {
+                wallpaperLoader.refresh()
                 await DownloadManager.shared.start()
                 await account.bootstrap()
                 if acceptedDisclaimer < Disclaimer.version {
@@ -81,6 +83,8 @@ public struct IOSMainWindow: View {
             .task(id: settings.showMainWindowAmbientBackground) {
                 artworkStore.setArtworkNeeded(settings.showMainWindowAmbientBackground)
             }
+            .onChange(of: settings.wallpaperEnabled) { _ in wallpaperLoader.refresh() }
+            .onChange(of: settings.wallpaperCurrent) { _ in wallpaperLoader.refresh() }
             .sheet(isPresented: $updater.showSheet) {
                 IOSUpdaterSheet()
             }
@@ -190,8 +194,14 @@ public struct IOSMainWindow: View {
     private var appContent: some View {
         if UIDevice.current.userInterfaceIdiom == .pad {
             MainWindow(path: $iPadPath)
+                // Wallpaper is a background layer only: it never joins the
+                // layout, so it cannot move the sidebar or any content.
+                .background { WallpaperBackgroundView(image: wallpaperLoader.image) }
         } else {
             tabInterface
+                // Same layer, behind the tabs: the glass tab bar and mini
+                // player stay exactly where they are with it on or off.
+                .background { WallpaperBackgroundView(image: wallpaperLoader.image) }
                 .overlay {
                     if settings.showMainWindowAmbientBackground {
                         MainWindowAmbientBackground(

@@ -28,6 +28,7 @@ struct NowPlayingView: View {
     /// Lyrics or comments in the regular page's right column (macOS, iPad).
     @State private var regularColumnPage = RegularColumnPage.lyrics
     #if os(iOS)
+    @StateObject private var wallpaperLoader = WallpaperImageLoader.shared
     @State private var showSoundEffects = false
     /// Held here rather than by the controls so the panel can sit above the
     /// whole page, with a catcher that closes it on a tap anywhere else.
@@ -242,10 +243,23 @@ struct NowPlayingView: View {
 
     private var backdrop: some View {
         ZStack {
+            #if os(iOS)
+            if let wallpaper = wallpaperLoader.image {
+                Image(platformImage: wallpaper)
+                    .resizable()
+                    .scaledToFill()
+                    .ignoresSafeArea()
+                // The veil keeps white lyrics readable over any photo; the
+                // artwork gradient below still tints the page.
+                Color.black.opacity(0.45)
+                    .ignoresSafeArea()
+            }
+            #endif
             LinearGradient(
                 colors: [colors.primary, colors.secondary],
                 startPoint: .topLeading, endPoint: .bottomTrailing
             )
+            .opacity(artworkGradientOpacity)
             RadialGradient(
                 colors: [.white.opacity(0.12), .clear],
                 center: .topLeading, startRadius: 0, endRadius: 700
@@ -257,6 +271,16 @@ struct NowPlayingView: View {
         }
         .ignoresSafeArea()
         .animation(.easeInOut(duration: 0.8), value: colors)
+    }
+
+    /// The artwork gradient stays full-strength without a wallpaper; with
+    /// one it drops so the photo shows through while still tinting the page.
+    private var artworkGradientOpacity: Double {
+        #if os(iOS)
+        wallpaperLoader.image == nil ? 1 : 0.6
+        #else
+        1
+        #endif
     }
 
     #if os(iOS)
@@ -321,7 +345,8 @@ struct NowPlayingView: View {
                 image: artworkImage, colors: colors,
                 // A full-screen blur redrawn 24 times a second is not worth it
                 // while nothing moves or the queue covers the lyrics.
-                isPaused: !player.isPlaying || showQueueOnMobile
+                isPaused: !player.isPlaying || showQueueOnMobile,
+                wallpaper: wallpaperLoader.image
             )
 
             VStack(spacing: 0) {
@@ -452,6 +477,7 @@ struct NowPlayingView: View {
         let image: PlatformImage?
         let colors: ArtworkColors
         var isPaused = false
+        var wallpaper: PlatformImage? = nil
 
         @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
@@ -467,10 +493,20 @@ struct NowPlayingView: View {
 
                 GeometryReader { geo in
                     ZStack {
+                        if let wallpaper {
+                            Image(platformImage: wallpaper)
+                                .resizable()
+                                .scaledToFill()
+                                .frame(width: geo.size.width, height: geo.size.height)
+                                .clipped()
+                            Color.black.opacity(0.4)
+                        }
+
                         LinearGradient(
                             colors: [colors.primary, colors.secondary],
                             startPoint: .topLeading, endPoint: .bottomTrailing
                         )
+                        .opacity(wallpaper == nil ? 1 : 0.55)
 
                         if let image {
                             Image(platformImage: image)

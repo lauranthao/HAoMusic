@@ -146,6 +146,8 @@ final class SettingsManager: ObservableObject {
         static let desktopLyricsCentered = "settings.desktopLyricsCentered"
         static let mainWindowAmbientBackground = "settings.showMainWindowAmbientBackground"
         static let mainWindowAmbientBackgroundIntensity = "settings.mainWindowAmbientBackgroundIntensity"
+        static let wallpaperEnabled = "settings.wallpaperEnabled"
+        static let wallpaperCurrent = "settings.wallpaperCurrent"
         static let enableAudioCache = "settings.enableAudioCache"
         static let audioCacheSizeMB = "settings.audioCacheSizeMB"
         static let audioCacheAutomatic = "settings.audioCacheAutomatic"
@@ -370,6 +372,19 @@ final class SettingsManager: ObservableObject {
         }
     }
 
+    /// User-chosen app background photo. The file lives under
+    /// `Documents/wallpapers/` (see `WallpaperStore`); only its relative
+    /// name is stored here, so a container move never orphans it.
+    @Published var wallpaperEnabled: Bool {
+        didSet { UserDefaults.standard.set(wallpaperEnabled, forKey: Keys.wallpaperEnabled) }
+    }
+
+    /// Relative name (`wallpapers/<uuid>.<ext>`) of the current wallpaper,
+    /// or "" when none was ever picked.
+    @Published var wallpaperCurrent: String {
+        didSet { UserDefaults.standard.set(wallpaperCurrent, forKey: Keys.wallpaperCurrent) }
+    }
+
     #if os(iOS)
     @Published var soundEffectPreset: SoundEffectPreset {
         didSet {
@@ -487,6 +502,8 @@ final class SettingsManager: ObservableObject {
             max(storedAmbientBackgroundIntensity, Self.mainWindowAmbientBackgroundIntensityRange.lowerBound),
             Self.mainWindowAmbientBackgroundIntensityRange.upperBound
         )
+        wallpaperEnabled = defaults.object(forKey: Keys.wallpaperEnabled) as? Bool ?? false
+        wallpaperCurrent = defaults.string(forKey: Keys.wallpaperCurrent) ?? ""
         #if os(iOS)
         soundEffectPreset = SoundEffectPreferences.preset(
             from: defaults, key: Keys.soundEffectPreset)
