@@ -13,10 +13,9 @@ struct PlaylistDetailView: View {
     @EnvironmentObject private var account: AccountStore
     @Environment(\.horizontalSizeClass) private var horizontalSizeClass
     @State private var showFullDescription = false
-    #if os(iOS)
-    @State private var showSearch = false
-    @State private var searchFocused = false
-    #endif
+    @State private var isSubscribing = false
+    @State private var showDeleteConfirm = false
+    @Environment(\.dismiss) private var dismiss
 
     init(playlistID: Int, isLikedList: Bool = false, recommendationContext: RecommendationContext? = nil) {
         self.playlistID = playlistID
@@ -42,8 +41,8 @@ struct PlaylistDetailView: View {
         model.detail?.specialType == 5 && isOwnPlaylist
     }
 
-    /// iOS reveals the in-list search for every playlist (macOS keeps its
-    /// search field in the action row).
+    /// The in-list search is permanent on iOS (macOS keeps its search field
+    /// in the action row).
     private var supportsPlaylistSearch: Bool {
         #if os(iOS)
         return model.detail != nil
@@ -52,80 +51,26 @@ struct PlaylistDetailView: View {
         #endif
     }
 
-    /// Loading notes that mention search: always on the liked list, as
-    /// before, and on any other playlist while it is being searched.
+    /// Loading notes that mention search: always on the liked list, and on
+    /// any other playlist while it is being searched.
     private var showsSearchLoadingNotes: Bool {
-        supportsPlaylistSearch && (isOwnLikedSongs || isSearchActive || TrackSearch.query(model.filter) != nil)
-    }
-
-    #if os(iOS)
-    private func revealSearch(_ proxy: ScrollViewProxy) {
-        withAnimation(AppAnimation.standard) {
-            showSearch = true
-            proxy.scrollTo("playlistTop", anchor: .top)
-        }
-        searchFocused = true
-    }
-    #endif
-
-    private var isSearchActive: Bool {
-        #if os(iOS)
-        return supportsPlaylistSearch && showSearch
-        #else
-        return false
-        #endif
+        supportsPlaylistSearch && (isOwnLikedSongs || TrackSearch.query(model.filter) != nil)
     }
 
     var body: some View {
-        ScrollViewReader { proxy in
-            onlineContent
-                .task(id: "\(playlistID):\(account.offlineScope ?? ""):\(downloads.network.isKnown):\(downloads.network.connected)") {
-                    await loadPlaylist()
-                }
-                .toolbar {
-                    if model.errorMessage != nil, downloads.network.connected, model.detail != nil {
-                        ToolbarItem(placement: .primaryAction) {
-                            Button { Task { await loadPlaylist() } } label: { Image(systemName: "arrow.clockwise") }
-                                .accessibilityLabel("重试")
-                                .help("重试")
-                        }
+        onlineContent
+            .task(id: "\(playlistID):\(account.offlineScope ?? ""):\(downloads.network.isKnown):\(downloads.network.connected)") {
+                await loadPlaylist()
+            }
+            .toolbar {
+                if model.errorMessage != nil, downloads.network.connected, model.detail != nil {
+                    ToolbarItem(placement: .primaryAction) {
+                        Button { Task { await loadPlaylist() } } label: { Image(systemName: "arrow.clockwise") }
+                            .accessibilityLabel("重试")
+                            .help("重试")
                     }
-                    #if os(iOS)
-                    if isOwnLikedSongs && supportsPlaylistSearch && !isSearchActive {
-                        ToolbarItem(placement: .navigationBarTrailing) {
-                            Menu {
-                                Button {
-                                    revealSearch(proxy)
-                                } label: {
-                                    Label("在歌单内查找", systemImage: "magnifyingglass")
-                                }
-                                Menu {
-                                    Picker("排序方式", selection: $model.sortOrder) {
-                                        ForEach(PlaylistTrackSort.allCases, id: \.self) { order in
-                                            Text(LocalizedStringKey(order.rawValue)).tag(order)
-                                        }
-                                    }
-                                } label: {
-                                    Label("排序方式", systemImage: "arrow.up.arrow.down")
-                                }
-                            } label: {
-                                Label("更多", systemImage: "ellipsis")
-                            }
-                            .accessibilityIdentifier("likedSongsMenu")
-                        }
-                    } else if supportsPlaylistSearch && !isSearchActive {
-                        ToolbarItem(placement: .navigationBarTrailing) {
-                            Button {
-                                revealSearch(proxy)
-                            } label: {
-                                Label("在歌单内查找", systemImage: "magnifyingglass")
-                            }
-                            .accessibilityIdentifier("playlistSearchButton")
-                        }
-                    }
-                    #endif
                 }
-        }
+            }
     }
 
     private func loadPlaylist() async {
@@ -167,21 +112,8 @@ struct PlaylistDetailView: View {
                 playlistContents
             }
             .id("playlistTop")
-            #if os(iOS)
-            .background {
-                if supportsPlaylistSearch {
-                    PlaylistSearchScrollGesture(isSearchActive: showSearch, onPullDown: {
-                        withAnimation(AppAnimation.standard) { showSearch = true }
-                        searchFocused = true
-                    }, onScrollUp: {
-                        searchFocused = false
-                        withAnimation(AppAnimation.standard) { showSearch = false }
-                    })
-                }
-            }
-            #endif
         }
-        .navigationTitle(isSearchActive ? String(localized: "搜索歌单内歌曲") : "")
+        .navigationTitle("")
         .navigationBarTitleDisplayMode(.inline)
         .scrollDismissesKeyboard(.interactively)
         #endif
@@ -217,35 +149,21 @@ struct PlaylistDetailView: View {
     private var playlistContents: some View {
         if model.loadedScope == account.offlineScope, let detail = model.detail {
             let filteredTracks = model.filteredTracks
-            if !isSearchActive {
-                if isCompact {
-                    compactHeader(detail)
-                        .padding(.horizontal, 16)
-                        .padding(.top, 12)
-                } else {
-                    regularHeader(detail)
-                        .padding(.horizontal, Theme.Layout.contentInset)
-                        .padding(.top, 16)
-                }
+            if isCompact {
+                compactHeader(detail)
+                    .padding(.top, 12)
+            } else {
+                regularHeader(detail)
+                    .padding(.horizontal, Theme.Layout.contentInset)
+                    .padding(.top, 16)
             }
 
             #if os(iOS)
-            if isSearchActive {
-                ListSearchBar(text: $model.filter, isFocused: $searchFocused) {
-                    model.filter = ""
-                    searchFocused = false
-                    withAnimation(AppAnimation.standard) { showSearch = false }
-                }
-                .padding(.horizontal, isCompact ? 8 : Theme.Layout.contentInset - 8)
-                .padding(.top, 8)
-                .transition(.opacity)
-            }
-
             if supportsPlaylistSearch && TrackSearch.query(model.filter) != nil {
                 SongSearchSummary(
                     count: filteredTracks.count,
                     isSettled: !model.isLoadingMore && model.errorMessage == nil,
-                    onClear: isSearchActive ? nil : { model.filter = "" },
+                    onClear: { model.filter = "" },
                     horizontalPadding: isCompact ? 16 : Theme.Layout.contentInset
                 )
             }
@@ -317,117 +235,102 @@ struct PlaylistDetailView: View {
 
     // MARK: - Compact (Mobile) Header
 
+    // Coda-style hero: search bar above a large centred cover, creator row,
+    // counts, then the star / 播放 / more row.
     private func compactHeader(_ detail: PlaylistDetail) -> some View {
-        VStack(alignment: .leading, spacing: 14) {
-            HStack(alignment: .top, spacing: 14) {
-                CachedAsyncImage(url: detail.coverImgUrl?.resizedImageURL(384))
-                    .frame(width: 120, height: 120)
-                    .clipShape(RoundedRectangle(cornerRadius: Theme.Radius.standard, style: .continuous))
-                    .shadow(color: .black.opacity(0.2), radius: 10, y: 4)
-
-                VStack(alignment: .leading, spacing: 6) {
-                    Text(isLikedList ? String(localized: "我喜欢的音乐") : detail.name)
-                        .font(.system(size: 16, weight: .bold))
-                        .lineLimit(3)
-
-                    if let creator = detail.creator, !isLikedList {
-                        HStack(spacing: 6) {
-                            CachedAsyncImage(url: creator.avatarUrl?.resizedImageURL(48), animated: false)
-                                .frame(width: 18, height: 18)
-                                .clipShape(Circle())
-                            Text(creator.nickname)
-                                .font(.system(size: 12, weight: .medium))
-                                .foregroundStyle(.secondary)
-                                .lineLimit(1)
-                        }
-                    }
-
-                    Text("\(detail.trackCount) 首 · \(Formatters.playCount(detail.playCount)) 次播放")
-                        .font(.system(size: 11))
-                        .foregroundStyle(.secondary)
-                }
-            }
-
-            if let description = detail.description, !description.isEmpty {
-                Button {
-                    showFullDescription = true
-                } label: {
-                    HStack(spacing: 4) {
-                        Text(description.replacingOccurrences(of: "\n", with: " "))
-                            .font(.system(size: 11.5))
-                            .foregroundStyle(.secondary)
-                            .lineLimit(2)
-                        Image(systemName: "chevron.right")
-                            .font(.system(size: 9))
-                            .foregroundStyle(.tertiary)
-                    }
-                }
-                .buttonStyle(.plain)
-                .sheet(isPresented: $showFullDescription) {
-                    NavigationStack {
-                        ScrollView {
-                            Text(description)
-                                .font(.system(size: 14))
-                                .padding(20)
-                        }
-                        .navigationTitle("歌单简介")
-                        #if os(iOS)
-                        .navigationBarTitleDisplayMode(.inline)
-                        #endif
-                        .toolbar {
-                            ToolbarItem(placement: .primaryAction) {
-                                Button("完成") { showFullDescription = false }
+        PlaylistHeader(filter: $model.filter, placeholder: String(localized: "在歌单中搜索")) {
+            PlaylistDetailHero(
+                coverURL: detail.coverImgUrl,
+                title: isLikedList ? String(localized: "我喜欢的音乐") : detail.name,
+                subtitle: detail.creator?.nickname ?? String(localized: "网易云音乐"),
+                avatarURL: detail.creator?.avatarUrl,
+                metadataText: "\(detail.trackCount) 首歌曲 · \(Formatters.playCount(detail.playCount)) 次播放",
+                showsAvatar: detail.creator != nil
+            ) {
+                PlaylistPrimaryActions(
+                    isSaved: detail.subscribed,
+                    canSave: account.isLoggedIn && !isOwnPlaylist,
+                    canPlay: !playable.isEmpty,
+                    isSaving: isSubscribing,
+                    onToggleSaved: { toggleSubscribe(detail) },
+                    onPlayAll: {
+                        player.play(tracks: playable, source: .playlist(playlistID),
+                                    context: model.detail.map { .playlist(id: playlistID, name: $0.name) })
+                    },
+                    showsSaveButton: !isOwnPlaylist && account.isLoggedIn,
+                    saveAccessibilityLabel: detail.subscribed ? String(localized: "取消收藏歌单") : String(localized: "收藏歌单")
+                ) {
+                    Menu {
+                        if let description = detail.description, !description.isEmpty {
+                            Button { showFullDescription = true } label: {
+                                Label("歌单简介", systemImage: "text.alignleft")
                             }
                         }
+                        if isLikedList {
+                            Button(action: startHeartbeat) {
+                                Label("心动", systemImage: "heart.circle")
+                            }
+                            .disabled(playable.isEmpty)
+                        }
+                        if isOwnPlaylist, !isLikedList {
+                            Button("删除歌单", role: .destructive) { showDeleteConfirm = true }
+                        }
+                        Menu {
+                            Picker("排序方式", selection: $model.sortOrder) {
+                                ForEach(PlaylistTrackSort.allCases, id: \.self) { order in
+                                    Text(LocalizedStringKey(order.rawValue)).tag(order)
+                                }
+                            }
+                            .pickerStyle(.inline)
+                            .labelsHidden()
+                        } label: {
+                            Label("排序方式", systemImage: "arrow.up.arrow.down")
+                        }
+                        DownloadCollectionButton(tracks: model.tracks, owner: "playlist:\(playlistID)",
+                                                 name: detail.name, enabled: model.canDownloadAll,
+                                                 menuPresentation: true)
+                    } label: {
+                        PlaylistMoreLabel()
+                    }
+                    .accessibilityLabel("更多操作")
+                }
+            }
+        }
+        .sheet(isPresented: $showFullDescription) {
+            NavigationStack {
+                ScrollView {
+                    Text(detail.description ?? "")
+                        .font(.system(size: 14))
+                        .padding(20)
+                }
+                .navigationTitle("歌单简介")
+                #if os(iOS)
+                .navigationBarTitleDisplayMode(.inline)
+                #endif
+                .toolbar {
+                    ToolbarItem(placement: .primaryAction) {
+                        Button("完成") { showFullDescription = false }
                     }
                 }
             }
+        }
+        .alert("删除歌单", isPresented: $showDeleteConfirm) {
+            Button("删除", role: .destructive) { deletePlaylist() }
+            Button("取消", role: .cancel) {}
+        } message: {
+            Text("确定要删除“\(detail.name)”吗？")
+        }
+    }
 
-            // Compact Action Bar
-            HStack(spacing: 10) {
-                Button {
-                    player.play(tracks: playable, source: .playlist(playlistID),
-                                context: model.detail.map { .playlist(id: playlistID, name: $0.name) })
-                } label: {
-                    HStack(spacing: 6) {
-                        Image(systemName: "play.fill")
-                        Text("播放全部 (\(playable.count))")
-                    }
-                    .font(.system(size: 13, weight: .semibold))
-                    .foregroundStyle(.white)
-                    .frame(maxWidth: .infinity)
-                    .padding(.vertical, 9)
-                    .background(Theme.accentGradient, in: Capsule())
-                    .shadow(color: Theme.accent.opacity(0.3), radius: 6, y: 2)
-                }
-                .buttonStyle(.pressable)
-                .disabled(playable.isEmpty)
-
-                downloadButton(detail, compact: true)
-
-                if isLikedList {
-                    Button {
-                        startHeartbeat()
-                    } label: {
-                        Image(systemName: "heart.circle.fill")
-                            .font(.system(size: 18))
-                            .foregroundStyle(Theme.accent)
-                            .frame(width: 38, height: 38)
-                            .background(.primary.opacity(0.06), in: Circle())
-                    }
-                    .buttonStyle(.pressable)
-                } else if !isOwnPlaylist, account.isLoggedIn {
-                    Button {
-                        toggleSubscribe(detail)
-                    } label: {
-                        Image(systemName: detail.subscribed ? "checkmark" : "plus")
-                            .font(.system(size: 14, weight: .semibold))
-                            .foregroundStyle(detail.subscribed ? Theme.accent : .primary)
-                            .frame(width: 38, height: 38)
-                            .background(.primary.opacity(0.06), in: Circle())
-                    }
-                    .buttonStyle(.pressable)
-                }
+    private func deletePlaylist() {
+        Task {
+            do {
+                try await MusicAPI.deletePlaylist(id: playlistID)
+                await account.refreshLibrary()
+                ToastCenter.shared.show(String(localized: "歌单已删除"))
+                dismiss()
+            } catch {
+                ToastCenter.shared.show(error.localizedDescription)
             }
         }
     }
@@ -576,7 +479,10 @@ struct PlaylistDetailView: View {
     }
 
     private func toggleSubscribe(_ detail: PlaylistDetail) {
+        guard !isSubscribing else { return }
+        isSubscribing = true
         Task {
+            defer { isSubscribing = false }
             do {
                 try await MusicAPI.subscribePlaylist(id: detail.id, subscribe: !detail.subscribed)
                 model.detail?.subscribed.toggle()

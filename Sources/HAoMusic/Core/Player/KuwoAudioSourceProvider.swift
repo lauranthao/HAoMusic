@@ -11,6 +11,20 @@ struct KuwoAudioSourceProvider: AudioSourceProvider {
     }
 
     func resolve(track: Track) async throws -> ResolvedAudioSource? {
+        guard let match = try await searchMatch(track: track) else { return nil }
+        return try await resolve(match: match, track: track)
+    }
+
+    /// The cached match path: no search, straight to the convert URL.
+    func resolve(match: UnblockMatch, track: Track) async throws -> ResolvedAudioSource? {
+        guard case .kuwo(let rid) = match else { return nil }
+        guard let url = try await convertURL(rid: rid) else { return nil }
+        return ResolvedAudioSource(id: id, displayName: displayName, url: url)
+    }
+
+    /// Searches Kuwo and returns the first title/artist/duration match,
+    /// remembering it for 10 minutes so a repeat tap skips the search.
+    func searchMatch(track: Track) async throws -> String? {
         let query = AudioSourceTrackMatcher.keyword(for: track)
             .addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? ""
         let searchURL = "https://search.kuwo.cn/r.s?&correct=1&vipver=1&stype=comprehensive&encoding=utf8"
@@ -43,8 +57,12 @@ struct KuwoAudioSourceProvider: AudioSourceProvider {
             return Song(rid: rid)
         }
         guard let match = matches.first else { return nil }
+        await UnblockMatchCache.shared.store(.kuwo(rid: match.rid), for: id, trackID: track.id)
+        return match.rid
+    }
 
-        let convertURL = "https://antiserver.kuwo.cn/anti.s?type=convert_url&format=mp3&response=url&rid=MUSIC_\(match.rid)"
+    func convertURL(rid: String) async throws -> URL? {
+        let convertURL = "https://antiserver.kuwo.cn/anti.s?type=convert_url&format=mp3&response=url&rid=MUSIC_\(rid)"
         let body = try await httpClient.data(
             from: convertURL,
             source: id,
@@ -58,8 +76,7 @@ struct KuwoAudioSourceProvider: AudioSourceProvider {
         // A song Kuwo won't serve still gets a link: an 11-second clip
         // telling the listener to use Kuwo Music, played as the song (#212).
         guard !Self.isPlaceholder(url) else { return nil }
-
-        return ResolvedAudioSource(id: id, displayName: displayName, url: url)
+        return url
     }
 
     /// The clip lives under `/nf/resource/`; real songs are served from

@@ -187,10 +187,6 @@ final class PlayerService: ObservableObject {
     private var itemStatusObservation: NSKeyValueObservation?
     private var resolveGeneration = 0
     private var consecutiveFailures = 0
-    /// Why the last playback URL request failed, when it failed in transit
-    /// or the service refused it, rather than answering with no URL. Named
-    /// in the 无法播放 toast, as on macOS (#209).
-    private var lastResolveFailure: String?
     /// The code the service answered with when it gave no URL, named only
     /// when the song itself shows no reason it can't be played.
     private var lastRefusalCode: Int?
@@ -764,7 +760,6 @@ final class PlayerService: ObservableObject {
         let quality = SettingsManager.shared.audioQuality.rawValue
         let allowsUnblock = SettingsManager.shared.canResolveUnblockedTracks
         let cacheEnabled = SettingsManager.shared.enableAudioCache && !skipsLocalCopies
-        lastResolveFailure = nil
         lastRefusalCode = nil
 
         // A downloaded copy beats the network, and is all there is without one.
@@ -828,7 +823,6 @@ final class PlayerService: ObservableObject {
         } catch {
             guard generation == resolveGeneration else { return }
             if !(error is CancellationError) {
-                lastResolveFailure = error.localizedDescription
                 Self.resolveLog.error("Playback URL for \(track.id) failed: \(String(describing: error))")
             }
             // A download covers a request that died on the network. Anything
@@ -930,12 +924,15 @@ final class PlayerService: ObservableObject {
 
     private func handleUnplayable(_ track: Track) {
         consecutiveFailures += 1
-        let reason = lastResolveFailure
-            ?? track.playability(privilege: nil,
-                                 isLoggedIn: AccountStore.shared.isLoggedIn,
-                                 vipType: AccountStore.shared.vipType).reason
+        // Coda-style: the toast names the song's own reason, never the raw
+        // upstream server message — that message came from the NetEase
+        // primary resolve, so it used to masquerade as a QQ failure.
+        let reason = track.playability(privilege: nil,
+                                       isLoggedIn: AccountStore.shared.isLoggedIn,
+                                       vipType: AccountStore.shared.vipType).reason
             ?? lastRefusalCode.map { String(localized: "网易云未给出播放地址（\($0)）") }
-        ToastCenter.shared.show(String(localized: "《\(track.name)》无法播放\(reason.map { "：\($0)" } ?? "")"))
+        let triedNote = attemptedUnblockSources.isEmpty ? "" : String(localized: "，已尝试第三方音源")
+        ToastCenter.shared.show(String(localized: "《\(track.name)》无法播放\(reason.map { "：\($0)" } ?? "")\(triedNote)"))
         guard isPlaying else {
             engine.replaceCurrentItem(with: nil)
             releaseCurrentPlaybackResources()

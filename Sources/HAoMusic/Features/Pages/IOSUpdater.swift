@@ -87,7 +87,7 @@ final class IOSUpdater: NSObject, ObservableObject {
     }
 
     /// Non-TrollStore path: download the IPA into Documents (findable in the
-    /// Files app under On My iPhone ▸ Kumone), then open the share sheet so the
+    /// Files app under On My iPhone ▸ HAo Music), then open the share sheet so the
     /// user can Save to Files or hand it straight to a signing app.
     func download(_ release: ReleaseChecker.Release) {
         guard let ipaURL = release.ipaURL else {
@@ -161,7 +161,7 @@ extension IOSUpdater: URLSessionDownloadDelegate {
 
     nonisolated func urlSession(_ session: URLSession, downloadTask: URLSessionDownloadTask,
                                 didFinishDownloadingTo location: URL) {
-        // Move into Documents (findable in Files under On My iPhone ▸ Kumone via
+        // Move into Documents (findable in Files under On My iPhone ▸ HAo Music via
         // UIFileSharingEnabled) before the temp download is reaped.
         let dir = (try? FileManager.default.url(for: .documentDirectory,
                                                 in: .userDomainMask,
@@ -234,7 +234,7 @@ struct IOSUpdaterSheet: View {
                 Image(systemName: "square.and.arrow.down.fill")
                     .font(.system(size: 40)).foregroundStyle(Theme.accent)
                 Text("下载完成").font(.headline)
-                Text("已保存到「文件」App ▸ 我的 iPhone ▸ Kumone。用下方按钮直接导入签名工具（全能签 / ESign 等），或在「文件」里手动打开。")
+                Text("已保存到「文件」App ▸ 我的 iPhone ▸ HAo Music。用下方按钮直接导入签名工具（全能签 / ESign 等），或在「文件」里手动打开。")
                     .font(.caption).foregroundStyle(.secondary)
                     .multilineTextAlignment(.center)
                 primaryButton("导入到签名工具") { updater.share(url) }

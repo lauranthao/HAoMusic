@@ -3,6 +3,11 @@ import Foundation
 /// Looks up the latest GitHub release. iOS has no Sparkle, so Settings
 /// offers a manual check that links to the release page for re-sideloading.
 enum ReleaseChecker {
+    enum UpdateError: LocalizedError {
+        case noRelease
+        var errorDescription: String? { "HAo Music 暂无已发布版本，请稍后再检查更新。" }
+    }
+
     struct Release {
         let version: String
         /// The release page (fallback download link).
@@ -21,7 +26,14 @@ enum ReleaseChecker {
         var request = URLRequest(url: URL(string: "https://api.github.com/repos/lauranthao/HAoMusic/releases/latest")!)
         request.setValue("application/vnd.github+json", forHTTPHeaderField: "Accept")
         request.timeoutInterval = 15
-        let (data, _) = try await URLSession.shared.data(for: request)
+        let (data, response) = try await URLSession.shared.data(for: request)
+        return try parseLatest(data: data, response: response)
+    }
+
+    static func parseLatest(data: Data, response: URLResponse) throws -> Release {
+        guard let http = response as? HTTPURLResponse else { throw URLError(.badServerResponse) }
+        if http.statusCode == 404 { throw UpdateError.noRelease }
+        guard (200..<300).contains(http.statusCode) else { throw URLError(.badServerResponse) }
         guard let obj = try JSONSerialization.jsonObject(with: data) as? [String: Any],
               let tag = obj["tag_name"] as? String,
               let html = obj["html_url"] as? String, let url = URL(string: html)

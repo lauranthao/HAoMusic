@@ -552,8 +552,19 @@ enum MusicAPI {
         let idString = "[" + ids.map(String.init).joined(separator: ",") + "]"
         var payload: [String: Any] = ["ids": idString, "level": level, "encodeType": "flac"]
         if level == "sky" { payload["immerseType"] = "c51" }
-        let data = try await client.eapi("/song/enhance/player/url/v1", payload)
-        return try client.decoded(SongURLResponse.self, from: data).data
+        // Coda parity (NeteaseAPI.songURL): the desktop profile intermittently
+        // returns -460 ("检测到您的网络环境存在风险") for playable tiers.
+        // Try the iOS profile first, then the same tier on the desktop profile
+        // before the resolver considers a downgrade.
+        do {
+            let data = try await client.eapi("/song/enhance/player/url/v1", payload,
+                                             cookieOverrides: ["os": "ios", "appver": "9.0.90",
+                                                               "osver": "16.2", "channel": "distribution"])
+            return try client.decoded(SongURLResponse.self, from: data).data
+        } catch MusicAPIError.business(code: -460, message: _) {
+            let data = try await client.eapi("/song/enhance/player/url/v1", payload)
+            return try client.decoded(SongURLResponse.self, from: data).data
+        }
     }
 
     /// `songURL`, asked once more after a moment when the request dies in

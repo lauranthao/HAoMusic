@@ -48,6 +48,7 @@ struct SettingsView: View {
     @EnvironmentObject private var settings: SettingsManager
     @EnvironmentObject private var account: AccountStore
     @Environment(\.openDestination) private var openDestination
+    @State private var showsDisclaimer = false
     #if os(macOS)
     @AppStorage(SettingsManager.Keys.menuBarPlayer) private var showMenuBarPlayer = false
     @State private var navigationPath: [SettingsPage] = []
@@ -277,6 +278,14 @@ struct SettingsView: View {
                 }
             }
 
+            Section("关于") {
+                Button {
+                    showsDisclaimer = true
+                } label: {
+                    Label("查看完整免责声明", systemImage: "exclamationmark.shield")
+                }
+            }
+
             Section {
                 VStack(spacing: 2) {
                     Text("HAo Music")
@@ -297,6 +306,7 @@ struct SettingsView: View {
             }
         }
         .formStyle(.grouped)
+        .sheet(isPresented: $showsDisclaimer) { DisclaimerView() }
         #if os(macOS)
         .navigationDestination(for: SettingsPage.self) { page in
             Group {

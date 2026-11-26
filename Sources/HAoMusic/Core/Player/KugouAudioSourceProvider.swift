@@ -12,6 +12,20 @@ struct KugouAudioSourceProvider: AudioSourceProvider {
     }
 
     func resolve(track: Track) async throws -> ResolvedAudioSource? {
+        guard let match = try await searchMatch(track: track) else { return nil }
+        return try await resolve(match: match, track: track)
+    }
+
+    /// The cached match path: no search, straight to the stream URL.
+    func resolve(match: UnblockMatch, track: Track) async throws -> ResolvedAudioSource? {
+        guard case .kugou(let hash, let albumID) = match else { return nil }
+        guard let url = try await streamURL(hash: hash, albumID: albumID) else { return nil }
+        return ResolvedAudioSource(id: id, displayName: displayName, url: url)
+    }
+
+    /// Searches Kugou and returns the first title/artist/duration match,
+    /// remembering it for 10 minutes so a repeat tap skips the search.
+    func searchMatch(track: Track) async throws -> (hash: String, albumID: String)? {
         let query = AudioSourceTrackMatcher.keyword(for: track)
             .addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? ""
         let searchURL = "http://mobilecdn.kugou.com/api/v3/search/song?format=json&keyword=\(query)&page=1&pagesize=10"
@@ -41,12 +55,17 @@ struct KugouAudioSourceProvider: AudioSourceProvider {
             return Song(hash: hash, albumID: albumID)
         }
         guard let match = matches.first else { return nil }
+        await UnblockMatchCache.shared.store(
+            .kugou(hash: match.hash, albumID: match.albumID), for: id, trackID: track.id)
+        return (match.hash, match.albumID)
+    }
 
-        let key = Insecure.MD5.hash(data: Data("\(match.hash)kgcloudv2".utf8))
+    func streamURL(hash: String, albumID: String) async throws -> URL? {
+        let key = Insecure.MD5.hash(data: Data("\(hash)kgcloudv2".utf8))
             .map { String(format: "%02x", $0) }
             .joined()
-        let streamURL = "https://trackercdn.kugou.com/i/v2/?key=\(key)&hash=\(match.hash)"
-            + "&appid=1005&pid=2&cmd=25&behavior=play&album_id=\(match.albumID)"
+        let streamURL = "https://trackercdn.kugou.com/i/v2/?key=\(key)&hash=\(hash)"
+            + "&appid=1005&pid=2&cmd=25&behavior=play&album_id=\(albumID)"
         let streamData = try await httpClient.data(
             from: streamURL,
             source: id,
@@ -56,8 +75,7 @@ struct KugouAudioSourceProvider: AudioSourceProvider {
               let urlString = (object["url"] as? [String])?.first,
               let url = URL(string: urlString)
         else { throw AudioSourceProviderError.invalidResponse }
-
-        return ResolvedAudioSource(id: id, displayName: displayName, url: url)
+        return url
     }
 
     private struct Song {

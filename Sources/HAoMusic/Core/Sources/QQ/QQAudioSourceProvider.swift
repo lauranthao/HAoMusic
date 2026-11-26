@@ -66,11 +66,26 @@ struct QQAudioSourceProvider: AudioSourceProvider {
             guard AudioSourceTrackMatcher.matches(
                 track: track, title: candidate.name, artist: candidate.artists, durationMS: durationMS
             ) else { continue }
+            // Remember the first match for 10 minutes so a repeat tap skips
+            // the search; the vkey result itself is already cached 10 minutes
+            // inside QQMusicAPI.
+            await UnblockMatchCache.shared.store(
+                .qq(mid: mid, mediaMid: candidate.qqMediaMid), for: .qq, trackID: track.id)
             guard let urlString = try await QQMusicAPI.shared.songURL(
                 songmid: mid, mediaMid: candidate.qqMediaMid
             ), let url = URL(string: urlString) else { continue }
             return ResolvedAudioSource(id: .qq, displayName: displayName, url: url)
         }
         return nil
+    }
+
+    /// The cached match path: no search, straight to the vkey flow.
+    /// A stale match falls back to a full search in the caller.
+    func resolve(match: UnblockMatch, track: Track) async throws -> ResolvedAudioSource? {
+        guard case .qq(let mid, let mediaMid) = match else { return nil }
+        guard let urlString = try await QQMusicAPI.shared.songURL(
+            songmid: mid, mediaMid: mediaMid
+        ), let url = URL(string: urlString) else { return nil }
+        return ResolvedAudioSource(id: .qq, displayName: displayName, url: url)
     }
 }

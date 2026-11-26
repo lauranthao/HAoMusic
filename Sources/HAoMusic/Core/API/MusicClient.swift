@@ -282,6 +282,9 @@ final class MusicClient: @unchecked Sendable {
         ]
         if let musicU = cookie(named: "MUSIC_U") { header["MUSIC_U"] = musicU }
         if let nmtid = cookie(named: "NMTID") { header["NMTID"] = nmtid }
+        // Coda parity: overrides (e.g. the iOS profile songURL retries with)
+        // apply to the encrypted header as well as the Cookie, not cookies only.
+        header.merge(cookieOverrides) { _, new in new }
         body["header"] = header
         body["e_r"] = false
         let json = try JSONSerialization.data(withJSONObject: body)
@@ -292,7 +295,8 @@ final class MusicClient: @unchecked Sendable {
         request.setValue(Self.eapiUserAgent, forHTTPHeaderField: "User-Agent")
         request.setValue("https://\(webHost)", forHTTPHeaderField: "Referer")
         request.setValue("application/x-www-form-urlencoded", forHTTPHeaderField: "Content-Type")
-        request.setValue(cookieHeader(extra: header, overrides: cookieOverrides), forHTTPHeaderField: "Cookie")
+        // Profile fields must replace stale profile cookies imported from another client.
+        request.setValue(cookieHeader(extra: [:], overrides: header), forHTTPHeaderField: "Cookie")
         request.httpBody = Self.encodeForm(form)
         return try await perform(request, authentication: authentication, absorbResponseCookies: absorbResponseCookies)
     }

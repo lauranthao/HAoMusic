@@ -27,6 +27,8 @@ public struct IOSMainWindow: View {
     @State private var lastForegroundRefresh: Date?
     @State private var showLogin = false
     @State private var showSettings = false
+    @State private var showDisclaimerGate = false
+    @AppStorage(Disclaimer.acceptedVersionKey) private var acceptedDisclaimer = 0
     @State private var homePath: [Destination] = []
     @State private var explorePath: [Destination] = []
     @State private var fmPath: [Destination] = []
@@ -60,6 +62,9 @@ public struct IOSMainWindow: View {
             .task {
                 await DownloadManager.shared.start()
                 await account.bootstrap()
+                if acceptedDisclaimer < Disclaimer.version {
+                    showDisclaimerGate = true
+                }
                 if settings.autoCheckUpdates, DistributionChannel.current.allowsSelfUpdate {
                     IOSUpdater.shared.check(interactive: false)
                 }
@@ -78,6 +83,12 @@ public struct IOSMainWindow: View {
             }
             .sheet(isPresented: $updater.showSheet) {
                 IOSUpdaterSheet()
+            }
+            .fullScreenCover(isPresented: $showDisclaimerGate) {
+                DisclaimerView(onAgree: {
+                    acceptedDisclaimer = Disclaimer.version
+                    showDisclaimerGate = false
+                })
             }
             // Presented here rather than from the Library tab or the iPad
             // sidebar: a sheet hosted inside the tab view is re-hosted when
@@ -624,149 +635,128 @@ struct IOSMiniPlayerBar: View {
 
 // MARK: - iOS Library View
 
+/// Coda-style 我的 page: a scrolling page topped by a large circular-avatar
+/// hero, then cover shelves instead of list rows.
 struct IOSLibraryView: View {
     @Binding var showLogin: Bool
     @EnvironmentObject private var account: AccountStore
     @Environment(\.presentSettingsSheet) private var presentSettingsSheet
+    @Environment(\.openDestination) private var openDestination
     @State private var showNewPlaylist = false
     @State private var newPlaylistName = ""
 
+    /// The liked list first, then the user's own playlists (Coda's
+    /// phoneCreatedPlaylists).
+    private var phoneCreatedPlaylists: [PlaylistSummary] {
+        guard let liked = account.likedSongsPlaylist else { return account.createdPlaylists }
+        return [liked] + account.createdPlaylists.filter { $0.id != liked.id }
+    }
+
     var body: some View {
-        List {
-            // Profile / Login header
-            Section {
-                SyncedLoginButtons()
+        ScrollView {
+            VStack(alignment: .leading, spacing: 20) {
                 if let profile = account.profile {
-                    HStack(spacing: 14) {
-                        CachedAsyncImage(url: profile.avatarUrl?.resizedImageURL(128))
-                            .frame(width: 52, height: 52)
-                            .clipShape(Circle())
-                        VStack(alignment: .leading, spacing: 3) {
-                            HStack(spacing: 6) {
-                                Text(profile.nickname)
-                                    .font(.headline)
-                                if profile.vipType > 0 {
-                                    VIPBadge()
-                                }
-                            }
-                            if let sig = profile.signature, !sig.isEmpty {
-                                Text(sig)
-                                    .font(.caption)
-                                    .foregroundStyle(.secondary)
-                                    .lineLimit(1)
-                            }
-                        }
+                    PlaylistDetailHero(
+                        coverURL: profile.avatarUrl,
+                        title: profile.nickname,
+                        subtitle: String(localized: "网易云音乐"),
+                        avatarURL: nil,
+                        metadataText: "\(account.userPlaylists.count) 个歌单",
+                        circularArtwork: true,
+                        showsAvatar: false
+                    ) {
+                        profileActions
                     }
-                    .padding(.vertical, 4)
                 } else {
-                    Button {
-                        showLogin = true
-                    } label: {
-                        HStack(spacing: 12) {
-                            Image(systemName: "person.crop.circle.badge.plus")
-                                .font(.system(size: 32))
-                                .foregroundStyle(Theme.accent)
-                            VStack(alignment: .leading, spacing: 2) {
-                                Text("登录账号")
-                                    .font(.headline)
-                                    .foregroundStyle(.primary)
-                                Text("同步我喜欢的音乐、歌单与每日推荐")
-                                    .font(.caption)
-                                    .foregroundStyle(.secondary)
-                            }
+                    PlaylistDetailHero(
+                        coverURL: nil,
+                        title: String(localized: "我的"),
+                        subtitle: String(localized: "登录网易云音乐"),
+                        avatarURL: nil,
+                        metadataText: String(localized: "同步我喜欢的音乐、歌单与收藏"),
+                        circularArtwork: true,
+                        showsAvatar: false
+                    ) {
+                        Button {
+                            showLogin = true
+                        } label: {
+                            Text("登录网易云音乐")
+                                .font(.system(size: 15, weight: .semibold))
+                                .frame(minWidth: 116, maxWidth: .infinity)
+                                .frame(height: 56)
+                                .foregroundStyle(.background)
+                                .background(.primary, in: Capsule())
                         }
-                        .padding(.vertical, 6)
-                    }
-                }
-            }
-
-            Section {
-                NavigationLink(value: Destination.downloaded) {
-                    Label("已下载", systemImage: "arrow.down.circle.fill")
-                }
-            }
-
-            if account.hasAuthCookie {
-                Section("我的音乐") {
-                    if let liked = account.likedSongsPlaylist {
-                        NavigationLink(value: Destination.playlist(liked.id)) {
-                            Label("我喜欢的音乐", systemImage: "heart.fill")
-                                .foregroundStyle(Theme.accent)
-                        }
-                    }
-                    NavigationLink(value: Destination.daily) {
-                        Label("每日推荐", systemImage: "calendar")
-                    }
-                    NavigationLink(value: Destination.recents) {
-                        Label("最近播放", systemImage: "clock.fill")
-                    }
-                    NavigationLink(value: Destination.collections) {
-                        Label("我的收藏", systemImage: "star.fill")
-                    }
-                    NavigationLink(value: Destination.cloud) {
-                        Label("音乐云盘", systemImage: "icloud.fill")
+                        .buttonStyle(.plain)
+                        .frame(maxWidth: 328)
+                        .padding(.horizontal, 16)
                     }
                 }
 
-                if !account.createdPlaylists.isEmpty {
-                    Section {
-                        ForEach(account.createdPlaylists) { playlist in
-                            NavigationLink(value: Destination.playlist(playlist.id)) {
-                                HStack(spacing: 10) {
-                                    CachedAsyncImage(url: playlist.coverURL?.resizedImageURL(80), animated: false)
-                                        .frame(width: 32, height: 32)
-                                        .clipShape(RoundedRectangle(cornerRadius: 6, style: .continuous))
-                                    VStack(alignment: .leading, spacing: 1) {
-                                        Text(playlist.name)
-                                            .font(.system(size: 14))
-                                            .lineLimit(1)
-                                        Text("\(playlist.trackCount) 首")
-                                            .font(.caption)
-                                            .foregroundStyle(.secondary)
-                                    }
-                                }
-                            }
+                SyncedLoginButtons()
+                    .padding(.horizontal, 16)
+
+                if account.hasAuthCookie {
+                    HStack {
+                        SectionHeader(title: "创建的歌单") {
+                            openDestination(.librarySection(.createdPlaylists))
                         }
-                    } header: {
-                        HStack {
-                            Text("创建的歌单")
-                            Spacer()
-                            Button {
-                                showNewPlaylist = true
-                            } label: {
-                                Image(systemName: "plus")
-                                    .font(.system(size: 13, weight: .semibold))
-                            }
+                        Spacer()
+                        Button {
+                            showNewPlaylist = true
+                        } label: {
+                            Image(systemName: "plus")
+                                .font(.system(size: 13, weight: .semibold))
+                                .frame(width: 44, height: 44)
                         }
+                        .buttonStyle(.plain)
+                        .accessibilityLabel("新建歌单")
+                    }
+                    .padding(.horizontal, 16)
+
+                    playlistShelf(phoneCreatedPlaylists)
+
+                    SectionHeader(title: "收藏的歌单") {
+                        openDestination(.librarySection(.subscribedPlaylists))
+                    }
+                    .padding(.horizontal, 16)
+                    if account.subscribedPlaylists.isEmpty {
+                        Text("暂无收藏歌单")
+                            .font(.subheadline)
+                            .foregroundStyle(.secondary)
+                            .padding(.horizontal, 16)
+                    } else {
+                        playlistShelf(account.subscribedPlaylists)
+                    }
+
+                    SectionHeader(title: "收藏的专辑") {
+                        openDestination(.collections)
+                    }
+                    .padding(.horizontal, 16)
+                    if account.likedAlbums.isEmpty {
+                        Text("还没有收藏专辑")
+                            .font(.subheadline)
+                            .foregroundStyle(.secondary)
+                            .padding(.horizontal, 16)
+                    } else {
+                        albumShelf(account.likedAlbums)
+                    }
+
+                    SectionHeader(title: "收藏的歌手") {
+                        openDestination(.collections)
+                    }
+                    .padding(.horizontal, 16)
+                    if account.likedArtists.isEmpty {
+                        Text("还没有收藏歌手")
+                            .font(.subheadline)
+                            .foregroundStyle(.secondary)
+                            .padding(.horizontal, 16)
+                    } else {
+                        artistShelf(account.likedArtists)
                     }
                 }
 
-                if !account.subscribedPlaylists.isEmpty {
-                    Section("收藏的歌单") {
-                        ForEach(account.subscribedPlaylists) { playlist in
-                            NavigationLink(value: Destination.playlist(playlist.id)) {
-                                HStack(spacing: 10) {
-                                    CachedAsyncImage(url: playlist.coverURL?.resizedImageURL(80), animated: false)
-                                        .frame(width: 32, height: 32)
-                                        .clipShape(RoundedRectangle(cornerRadius: 6, style: .continuous))
-                                    VStack(alignment: .leading, spacing: 1) {
-                                        Text(playlist.name)
-                                            .font(.system(size: 14))
-                                            .lineLimit(1)
-                                        Text("\(playlist.trackCount) 首")
-                                            .font(.caption)
-                                            .foregroundStyle(.secondary)
-                                    }
-                                }
-                            }
-                        }
-                    }
-                }
-            }
-
-            Section {
                 PlayerClearanceSpacer()
-                    .listRowBackground(Color.clear)
             }
         }
         .navigationTitle("我的")
@@ -799,5 +789,164 @@ struct IOSLibraryView: View {
             Button("取消", role: .cancel) { newPlaylistName = "" }
         }
     }
+
+    private var profileActions: some View {
+        PlaylistPrimaryActions(
+            isSaved: false,
+            canSave: true,
+            canPlay: true,
+            isSaving: false,
+            onToggleSaved: { openDestination(.cloud) },
+            onPlayAll: {
+                if account.hasAuthCookie {
+                    openDestination(.recents)
+                } else {
+                    showLogin = true
+                }
+            },
+            leadingIcon: "icloud.fill",
+            primaryTitle: account.hasAuthCookie ? LocalizedStringKey("最近") : LocalizedStringKey("我喜欢的音乐"),
+            primaryIcon: account.hasAuthCookie ? "clock.fill" : "heart.fill",
+            saveAccessibilityLabel: String(localized: "云盘")
+        ) {
+            Menu {
+                Button { openDestination(.collections) } label: {
+                    Label("我的收藏", systemImage: "star")
+                }
+                Button { openDestination(.downloaded) } label: {
+                    Label("我的下载", systemImage: "arrow.down.circle.fill")
+                }
+                Button { openDestination(.daily) } label: {
+                    Label("每日推荐", systemImage: "calendar")
+                }
+                if account.isLoggedIn {
+                    Button(role: .destructive) {
+                        Task {
+                            do { try await account.logout() }
+                            catch { ToastCenter.shared.show(error.localizedDescription) }
+                        }
+                    } label: {
+                        Label("退出登录", systemImage: "rectangle.portrait.and.arrow.right")
+                    }
+                }
+            } label: {
+                PlaylistMoreLabel()
+            }
+            .accessibilityLabel("更多操作")
+        }
+    }
+
+    private func playlistShelf(_ playlists: [PlaylistSummary]) -> some View {
+        ScrollView(.horizontal, showsIndicators: false) {
+            HStack(alignment: .top, spacing: 16) {
+                ForEach(playlists) { playlist in
+                    NavigationLink(value: Destination.playlist(playlist.id)) {
+                        CoverCardBody(
+                            coverURL: playlist.coverURL?.resizedImageURL(384),
+                            title: playlist.name,
+                            playCount: playlist.playCount
+                        )
+                    }
+                    .buttonStyle(.interactiveCard)
+                }
+            }
+            .padding(.horizontal, 16)
+        }
+    }
+
+    private func albumShelf(_ albums: [AlbumSummary]) -> some View {
+        ScrollView(.horizontal, showsIndicators: false) {
+            HStack(alignment: .top, spacing: 16) {
+                ForEach(albums) { album in
+                    NavigationLink(value: Destination.album(album.id)) {
+                        CoverCardBody(
+                            coverURL: album.picUrl?.resizedImageURL(384),
+                            title: album.name,
+                            subtitle: album.artistName
+                        )
+                    }
+                    .buttonStyle(.interactiveCard)
+                }
+            }
+            .padding(.horizontal, 16)
+        }
+    }
+
+    private func artistShelf(_ artists: [ArtistSummary]) -> some View {
+        ScrollView(.horizontal, showsIndicators: false) {
+            HStack(alignment: .top, spacing: 16) {
+                ForEach(artists) { artist in
+                    NavigationLink(value: Destination.artist(artist.id)) {
+                        VStack(spacing: 8) {
+                            CachedAsyncImage(url: artist.picUrl?.resizedImageURL(256))
+                                .frame(width: 100, height: 100)
+                                .clipShape(Circle())
+                            Text(artist.name)
+                                .font(.system(size: 12, weight: .medium))
+                                .lineLimit(1)
+                        }
+                        .frame(width: 100)
+                    }
+                    .buttonStyle(.interactiveCard)
+                }
+            }
+            .padding(.horizontal, 16)
+        }
+    }
 }
+
+/// One library section as a full list page (created / subscribed playlists).
+struct LibrarySectionView: View {
+    let section: LibrarySection
+
+    @EnvironmentObject private var account: AccountStore
+
+    private var playlists: [PlaylistSummary] {
+        switch section {
+        case .createdPlaylists: return account.createdPlaylists
+        case .subscribedPlaylists: return account.subscribedPlaylists
+        }
+    }
+
+    var body: some View {
+        ScrollView {
+            VStack(alignment: .leading, spacing: 4) {
+                if playlists.isEmpty {
+                    Text(section == .createdPlaylists ? String(localized: "还没有创建歌单") : String(localized: "暂无收藏歌单"))
+                        .font(.subheadline)
+                        .foregroundStyle(.secondary)
+                        .frame(maxWidth: .infinity)
+                        .padding(.top, 40)
+                } else {
+                    ForEach(playlists) { playlist in
+                        NavigationLink(value: Destination.playlist(playlist.id)) {
+                            HStack(spacing: 10) {
+                                CachedAsyncImage(url: playlist.coverURL?.resizedImageURL(80), animated: false)
+                                    .frame(width: 32, height: 32)
+                                    .clipShape(RoundedRectangle(cornerRadius: 6, style: .continuous))
+                                VStack(alignment: .leading, spacing: 1) {
+                                    Text(playlist.name)
+                                        .font(.system(size: 14))
+                                        .lineLimit(1)
+                                    Text("\(playlist.trackCount) 首")
+                                        .font(.caption)
+                                        .foregroundStyle(.secondary)
+                                }
+                            }
+                            .padding(.vertical, 6)
+                        }
+                        .buttonStyle(.plain)
+                    }
+                }
+                PlayerClearanceSpacer()
+            }
+            .padding(.horizontal, 16)
+        }
+        .navigationTitle(section == .createdPlaylists ? String(localized: "创建的歌单") : String(localized: "收藏的歌单"))
+        #if os(iOS)
+        .navigationBarTitleDisplayMode(.inline)
+        #endif
+    }
+}
+
 #endif

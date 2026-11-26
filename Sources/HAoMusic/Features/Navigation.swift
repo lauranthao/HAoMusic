@@ -98,12 +98,20 @@ enum Destination: Hashable {
     case radarPlaylist(Int)
     case album(Int)
     case artist(Int)
+    case artistSection(Int, ArtistSection)
+    case librarySection(LibrarySection)
     case daily
     case toplists
     case recents
     case collections
     case cloud
     case search(String)
+}
+
+/// One 我的 page section as a full list page.
+enum LibrarySection: String, Hashable {
+    case createdPlaylists
+    case subscribedPlaylists
 }
 
 extension Array where Element == Destination {
@@ -131,6 +139,10 @@ struct DestinationsModifier: ViewModifier {
                     AlbumDetailView(albumID: id)
                 case .artist(let id):
                     ArtistDetailView(artistID: id)
+                case .artistSection(let id, let section):
+                    ArtistSectionView(artistID: id, section: section)
+                case .librarySection(let section):
+                    LibrarySectionView(section: section)
                 case .daily:
                     DailySongsView()
                 case .toplists:

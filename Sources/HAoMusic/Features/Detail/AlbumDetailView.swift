@@ -10,6 +10,8 @@ struct AlbumDetailView: View {
     @State private var isLoading = true
     @State private var errorMessage: String?
     @State private var showFullDescription = false
+    @State private var isSubscribing = false
+    @State private var searchText = ""
     @State private var loadGeneration = 0
     @ObservedObject private var downloads = DownloadManager.shared
 
@@ -54,11 +56,18 @@ struct AlbumDetailView: View {
         }
     }
 
+    /// Songs shown in the list (and played by 播放): the in-album search
+    /// filters by song, artist or album name; empty query shows everything.
+    private var displayedTracks: [Track] {
+        guard let query = TrackSearch.query(searchText) else { return tracks }
+        return tracks.filter { TrackSearch.matches($0, query: query) }
+    }
+
     private var onlineContent: some View {
-        TrackListScrollView(trackIDs: tracks.map(\.id), spacing: isCompact ? 16 : 20) {
+        TrackListScrollView(trackIDs: displayedTracks.map(\.id), spacing: isCompact ? 16 : 20) {
             if let album {
                 if isCompact {
-                    compactHeader(album).padding(.horizontal, 16).padding(.top, 12)
+                    compactHeader(album).padding(.top, 12)
                 } else {
                     regularHeader(album).padding(.horizontal, Theme.Layout.contentInset).padding(.top, 16)
                 }
@@ -69,7 +78,7 @@ struct AlbumDetailView: View {
                     .frame(minHeight: 400)
             }
         } rows: { layout in
-            TrackListView(tracks: tracks, source: .album(albumID),
+            TrackListView(tracks: displayedTracks, source: .album(albumID),
                           context: album.map { .album(id: albumID, name: $0.name) }, layout: layout)
                 .padding(.horizontal, isCompact ? 6 : Theme.Layout.contentInset - 10)
         } footer: {
@@ -135,104 +144,67 @@ struct AlbumDetailView: View {
 
     // MARK: - Compact Header
 
-    // HAo Music album header: cover centred on top (Apple Music style),
-    // unlike Kumone's cover-left / text-right row.
+    // Coda-style hero: search bar above a large centred cover, title,
+    // artist row, metadata, then the star / 播放 / more row.
     private func compactHeader(_ album: AlbumDetail) -> some View {
-        VStack(alignment: .center, spacing: 14) {
-            CachedAsyncImage(url: album.picUrl?.resizedImageURL(384))
-                .frame(width: 180, height: 180)
-                .clipShape(RoundedRectangle(cornerRadius: Theme.Radius.standard, style: .continuous))
-                .shadow(color: .black.opacity(0.2), radius: 10, y: 4)
-
-            VStack(alignment: .center, spacing: 6) {
-                Text(album.name)
-                    .font(.system(size: 16, weight: .bold))
-                    .lineLimit(3)
-                    .multilineTextAlignment(.center)
-
-                if let artist = album.artist {
-                    NavigationLink(value: Destination.artist(artist.id)) {
-                        Text(artist.name)
-                            .font(.system(size: 13, weight: .medium))
-                            .foregroundStyle(Theme.accent)
-                            .lineLimit(1)
-                    }
-                    .buttonStyle(.plain)
-                }
-
-                Text("\(tracks.count) 首 · \(Formatters.date(fromMS: album.publishTime))")
-                    .font(.system(size: 11))
-                    .foregroundStyle(.secondary)
-            }
-
-            if let description = album.description, !description.isEmpty {
-                Button {
-                    showFullDescription = true
-                } label: {
-                    HStack(spacing: 4) {
-                        Text(description.replacingOccurrences(of: "\n", with: " "))
-                            .font(.system(size: 11.5))
-                            .foregroundStyle(.secondary)
-                            .lineLimit(2)
-                        Image(systemName: "chevron.right")
-                            .font(.system(size: 9))
-                            .foregroundStyle(.tertiary)
-                    }
-                }
-                .buttonStyle(.plain)
-                .frame(maxWidth: .infinity, alignment: .leading)
-                .sheet(isPresented: $showFullDescription) {
-                    NavigationStack {
-                        ScrollView {
-                            Text(description)
-                                .font(.system(size: 14))
-                                .padding(20)
-                        }
-                        .navigationTitle("专辑简介")
-                        #if os(iOS)
-                        .navigationBarTitleDisplayMode(.inline)
-                        #endif
-                        .toolbar {
-                            ToolbarItem(placement: .primaryAction) {
-                                Button("完成") { showFullDescription = false }
+        PlaylistHeader(filter: $searchText, placeholder: String(localized: "在专辑中搜索")) {
+            PlaylistDetailHero(
+                coverURL: album.picUrl,
+                title: album.name,
+                subtitle: album.artist?.name ?? String(localized: "专辑"),
+                avatarURL: album.artist?.picUrl,
+                metadataText: album.publishTime > 0
+                    ? "\(tracks.count) 首歌曲 · \(totalDuration) · \(Formatters.date(fromMS: album.publishTime))"
+                    : "\(tracks.count) 首歌曲 · \(totalDuration)",
+                subtitleDestination: album.artist.map { Destination.artist($0.id) }
+            ) {
+                PlaylistPrimaryActions(
+                    isSaved: isSubscribed,
+                    canSave: account.isLoggedIn && !isLoading,
+                    canPlay: !displayedTracks.isEmpty,
+                    isSaving: isSubscribing,
+                    onToggleSaved: toggleSubscribe,
+                    onPlayAll: {
+                        player.play(tracks: displayedTracks, source: .album(albumID),
+                                    context: .album(id: albumID, name: album.name))
+                    },
+                    saveAccessibilityLabel: isSubscribed ? String(localized: "取消收藏专辑") : String(localized: "收藏专辑")
+                ) {
+                    Menu {
+                        if let artist = album.artist {
+                            NavigationLink(value: Destination.artist(artist.id)) {
+                                Label("查看歌手", systemImage: "person.fill")
                             }
                         }
+                        if let description = album.description, !description.isEmpty {
+                            Button { showFullDescription = true } label: {
+                                Label("专辑简介", systemImage: "text.alignleft")
+                            }
+                        }
+                        DownloadCollectionButton(tracks: tracks, owner: "album:\(albumID)",
+                                                 name: album.name, menuPresentation: true)
+                    } label: {
+                        PlaylistMoreLabel()
                     }
+                    .accessibilityLabel("更多操作")
                 }
             }
-
-            // Compact Action Bar
-            HStack(spacing: 10) {
-                Button {
-                    player.play(tracks: tracks, source: .album(albumID),
-                                context: .album(id: albumID, name: album.name))
-                } label: {
-                    HStack(spacing: 6) {
-                        Image(systemName: "play.fill")
-                        Text("播放全部 (\(tracks.count))")
-                    }
-                    .font(.system(size: 13, weight: .semibold))
-                    .foregroundStyle(.white)
-                    .frame(maxWidth: .infinity)
-                    .padding(.vertical, 9)
-                    .background(Theme.accentGradient, in: Capsule())
-                    .shadow(color: Theme.accent.opacity(0.3), radius: 6, y: 2)
+        }
+        .sheet(isPresented: $showFullDescription) {
+            NavigationStack {
+                ScrollView {
+                    Text(album.description ?? "")
+                        .font(.system(size: 14))
+                        .padding(20)
                 }
-                .buttonStyle(.pressable)
-
-                DownloadCollectionButton(tracks: tracks, owner: "album:\(albumID)", name: album.name, compact: true)
-
-                if account.isLoggedIn {
-                    Button {
-                        toggleSubscribe()
-                    } label: {
-                        Image(systemName: isSubscribed ? "checkmark" : "plus")
-                            .font(.system(size: 14, weight: .semibold))
-                            .foregroundStyle(isSubscribed ? Theme.accent : .primary)
-                            .frame(width: 38, height: 38)
-                            .background(.primary.opacity(0.06), in: Circle())
+                .navigationTitle("专辑简介")
+                #if os(iOS)
+                .navigationBarTitleDisplayMode(.inline)
+                #endif
+                .toolbar {
+                    ToolbarItem(placement: .primaryAction) {
+                        Button("完成") { showFullDescription = false }
                     }
-                    .buttonStyle(.pressable)
                 }
             }
         }
@@ -336,7 +308,10 @@ struct AlbumDetailView: View {
     }
 
     private func toggleSubscribe() {
+        guard !isSubscribing else { return }
+        isSubscribing = true
         Task {
+            defer { isSubscribing = false }
             do {
                 try await MusicAPI.subscribeAlbum(id: albumID, subscribe: !isSubscribed)
                 isSubscribed.toggle()

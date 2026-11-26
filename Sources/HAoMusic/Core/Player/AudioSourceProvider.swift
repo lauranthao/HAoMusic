@@ -2,18 +2,30 @@ import Foundation
 
 enum AudioSourceID: String, CaseIterable, Hashable {
     case pyncmd
+    case parser
     case kugou
     case kuwo
     case qq
 
     var displayName: String {
         switch self {
-        case .pyncmd: return "pyncmd"
+        case .pyncmd: return String(localized: "备用音源")
+        case .parser: return String(localized: "备用音源")
         case .kugou: return String(localized: "酷狗音乐")
         case .kuwo: return String(localized: "酷我音乐")
         case .qq: return String(localized: "QQ 音乐")
         }
     }
+}
+
+/// A search result a provider can turn into a stream URL without searching
+/// again (Coda's UnblockMatchCache, 10-minute lifetime). Mirrors and parsers
+/// answer with a verified stream directly, so they cache the URL itself.
+enum UnblockMatch: Hashable, Sendable {
+    case kugou(hash: String, albumID: String)
+    case kuwo(rid: String)
+    case qq(mid: String, mediaMid: String?)
+    case direct(url: URL)
 }
 
 struct ResolvedAudioSource {
@@ -27,6 +39,17 @@ protocol AudioSourceProvider {
     var displayName: String { get }
 
     func resolve(track: Track) async throws -> ResolvedAudioSource?
+
+    /// Turns a cached match back into a stream URL without searching again.
+    /// The default falls back to a full resolve; providers that support the
+    /// match cache override this.
+    func resolve(match: UnblockMatch, track: Track) async throws -> ResolvedAudioSource?
+}
+
+extension AudioSourceProvider {
+    func resolve(match: UnblockMatch, track: Track) async throws -> ResolvedAudioSource? {
+        try await resolve(track: track)
+    }
 }
 
 enum AudioSourceProviderError: LocalizedError {

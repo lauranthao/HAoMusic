@@ -416,6 +416,9 @@ struct DownloadCollectionButton: View {
     let name: String
     var enabled = true
     var compact = false
+    /// Renders as a text row (plus pause/resume/stop/remove rows) for use
+    /// inside a Menu, like Coda's more menus.
+    var menuPresentation = false
     @ObservedObject private var downloads = DownloadManager.shared
     @ObservedObject private var progress = DownloadManager.shared.progress
     @EnvironmentObject private var account: AccountStore
@@ -461,31 +464,45 @@ struct DownloadCollectionButton: View {
     }
 
     var body: some View {
-        Button(action: activate) {
-            DownloadButtonIcon(isActive: isActive || isSubmitting, isComplete: isComplete && !canResume && !isActive,
-                               progress: fraction, size: compact ? 21 : 19, symbolSize: compact ? 16 : 14,
-                               completedSymbol: "checkmark")
-                .foregroundStyle(Theme.accent)
-                .frame(width: compact ? 38 : 34, height: compact ? 38 : 34)
-                .background(.primary.opacity(0.06), in: Circle())
-                .contentShape(Circle())
+        Group {
+            Button(action: activate) {
+                if menuPresentation {
+                    Label(title, systemImage: isActive ? "stop.circle"
+                        : (isComplete ? "checkmark.circle" : "arrow.down.circle"))
+                } else {
+                    DownloadButtonIcon(isActive: isActive || isSubmitting, isComplete: isComplete && !canResume && !isActive,
+                                       progress: fraction, size: compact ? 21 : 19, symbolSize: compact ? 16 : 14,
+                                       completedSymbol: "checkmark")
+                        .foregroundStyle(Theme.accent)
+                        .frame(width: compact ? 38 : 34, height: compact ? 38 : 34)
+                        .background(.primary.opacity(0.06), in: Circle())
+                        .contentShape(Circle())
+                }
+            }
+            .buttonStyle(.pressable)
+            .accessibilityLabel(title)
+            .accessibilityIdentifier("collection-download-\(owner)")
+            .help(title)
+            .disabled(isSubmitting || isRemoving || (!isActive && !canResume && (!enabled || tracks.isEmpty)))
+            .alert(removalTitle, isPresented: $confirmRemoval) {
+                Button("移除下载", role: .destructive) { removeDownloads() }
+                Button("取消", role: .cancel) {}
+            } message: {
+                Text("其他歌单中的相同歌曲也会移除下载。")
+            }
+            .onChange(of: downloads.accountScope) { _ in
+                confirmRemoval = false
+                pendingRemoval = []
+            }
+            .contextMenu {
+                if !menuPresentation { auxiliaryActions }
+            }
+            if menuPresentation { auxiliaryActions }
         }
-        .buttonStyle(.pressable)
-        .accessibilityLabel(title)
-        .accessibilityIdentifier("collection-download-\(owner)")
-        .help(title)
-        .disabled(isSubmitting || isRemoving || (!isActive && !canResume && (!enabled || tracks.isEmpty)))
-        .alert(removalTitle, isPresented: $confirmRemoval) {
-            Button("移除下载", role: .destructive) { removeDownloads() }
-            Button("取消", role: .cancel) {}
-        } message: {
-            Text("其他歌单中的相同歌曲也会移除下载。")
-        }
-        .onChange(of: downloads.accountScope) { _ in
-            confirmRemoval = false
-            pendingRemoval = []
-        }
-        .contextMenu {
+    }
+
+    @ViewBuilder
+    private var auxiliaryActions: some View {
             if collectionJobs.contains(where: { [.queued, .resolving, .downloading, .waitingNetwork].contains($0.status) }) {
                 Button("暂停下载") {
                     Task { [scope = downloads.accountScope] in
@@ -517,7 +534,6 @@ struct DownloadCollectionButton: View {
                 Button(removalAction, role: .destructive) { requestRemoval() }
             }
             Button("下载任务") { openDestination(.downloadTasks) }
-        }
     }
 
     private func activate() {
