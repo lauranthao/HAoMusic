@@ -69,7 +69,7 @@ enum NeteaseCrypto {
             data.withUnsafeBytes { dataPtr in
                 out.withUnsafeMutableBytes { outPtr in
                     CCCrypt(
-                        CCEncrypt,
+                        kCCEncrypt,
                         CCAlgorithm(kCCAlgorithmAES128),
                         CCOptions(kCCOptionPKCS7Padding | kCCOptionECBMode),
                         keyPtr.baseAddress, keyData.count,
