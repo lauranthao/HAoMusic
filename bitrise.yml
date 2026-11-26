@@ -29,3 +29,49 @@ workflows:
               -destination 'generic/platform=iOS Simulator' \
               CODE_SIGNING_ALLOWED=NO \
               build
+  ipa:
+    meta:
+      bitrise.io:
+        stack: osx-xcode-26.2.x
+    steps:
+    - activate-ssh-key@4:
+        run_if: '{{getenv "SSH_RSA_PRIVATE_KEY" | ne ""}}'
+    - git-clone@8: {}
+    - script@1:
+        title: Build unsigned app (device, Release)
+        inputs:
+        - content: |-
+            #!/usr/bin/env bash
+            set -e
+            xcodebuild -project HAoMusic.xcodeproj \
+              -target HAoMusic \
+              -configuration Release \
+              -sdk iphoneos \
+              -derivedDataPath build \
+              CODE_SIGNING_ALLOWED=NO \
+              CODE_SIGN_IDENTITY="" \
+              CODE_SIGNING_REQUIRED=NO
+    - script@1:
+        title: Package IPA
+        inputs:
+        - content: |-
+            #!/usr/bin/env bash
+            set -e
+            APP_PATH=$(find build/Build/Products/Release-iphoneos -maxdepth 1 -name "*.app" | head -1)
+            echo "App: $APP_PATH"
+            rm -rf Payload HAoMusic.ipa
+            mkdir -p Payload
+            cp -r "$APP_PATH" Payload/
+            # package_ipa.py writes Info.plist third, plain deflate, no
+            # extra fields, no data descriptors — LCSign's shallow scan
+            # needs the main bundle up front (see its header comment).
+            python3 package_ipa.py Payload HAoMusic.ipa
+            ls -lh HAoMusic.ipa
+            mkdir -p "$BITRISE_DEPLOY_DIR"
+            # Deploy-to-Bitrise parses *.ipa for a provisioning profile
+            # and fails on unsigned builds (no embedded.mobileprovision).
+            # Ship the same bytes as a .zip — an IPA is a zip — so it
+            # uploads as a generic file; rename back to .ipa after download.
+            cp HAoMusic.ipa "$BITRISE_DEPLOY_DIR/HAoMusic-v0.1.0.zip"
+            ls -lh "$BITRISE_DEPLOY_DIR/"
+    - deploy-to-bitrise-io@2: {}
