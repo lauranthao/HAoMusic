@@ -1,56 +1,6 @@
 #if os(iOS)
 import SwiftUI
 
-struct SoundEffectsButton: View {
-    @EnvironmentObject private var settings: SettingsManager
-
-    let action: () -> Void
-    var diameter: CGFloat = 44
-    var glyphSize: CGFloat = 17
-    var showsBackground = true
-
-    var body: some View {
-        Menu {
-            // A picker gives the menu the system checkmark on the active preset.
-            Picker("音效", selection: Binding(
-                get: { settings.soundEffectPreset },
-                set: { settings.selectSoundEffect($0) }
-            )) {
-                ForEach(SoundEffectPreset.allCases.filter { $0 != .custom }) { preset in
-                    Label(preset.displayName, systemImage: preset.systemImage)
-                        .tag(preset)
-                }
-            }
-            .pickerStyle(.inline)
-
-            Divider()
-
-            Button(action: action) {
-                Label("均衡器…", systemImage: "slider.vertical.3")
-            }
-        } label: {
-            Image(systemName: "waveform")
-                .font(.system(size: glyphSize, weight: .medium))
-                .foregroundStyle(
-                    settings.soundEffectPreset == .original
-                        ? .white.opacity(0.76)
-                        : Theme.accent)
-                .frame(width: diameter, height: diameter)
-                .background {
-                    if showsBackground {
-                        Circle().fill(.white.opacity(0.08))
-                    }
-                }
-                .contentShape(Circle())
-        }
-        .menuOrder(.fixed)
-        .buttonStyle(.pressable)
-        .accessibilityLabel("音效")
-        .accessibilityValue(settings.soundEffectPreset.displayName)
-        .accessibilityIdentifier("soundEffectsButton")
-    }
-}
-
 enum SoundEffectsSection: String, CaseIterable, Identifiable {
     case effects
     case equalizer

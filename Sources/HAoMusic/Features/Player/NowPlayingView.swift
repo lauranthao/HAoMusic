@@ -29,7 +29,6 @@ struct NowPlayingView: View {
     /// Lyrics or comments in the regular page's right column (macOS, iPad).
     @State private var regularColumnPage = RegularColumnPage.lyrics
     #if os(iOS)
-    @StateObject private var wallpaperLoader = WallpaperImageLoader.shared
     @State private var showSoundEffects = false
     /// Held here rather than by the controls so the panel can sit above the
     /// whole page, with a catcher that closes it on a tap anywhere else.
@@ -43,7 +42,18 @@ struct NowPlayingView: View {
                 backdrop
 
                 if isCompact {
+                    // Cap the compact layout at the screen height. The
+                    // lyrics middle is a ScrollView (inside the pager's
+                    // TabView) whose ideal height is its full content, so
+                    // without a cap the VStack sizes taller than the screen
+                    // in the lyrics state and shoves the scrubber, transport
+                    // and secondary row off the bottom edge (#18). A max cap
+                    // only binds when the content overflows: the artwork
+                    // state is shorter than the screen and stays exactly as
+                    // it is; the lyrics state flexes the middle and the
+                    // lyrics scroll inside it.
                     compactLayout(size: geo.size)
+                        .frame(maxHeight: geo.size.height)
                 } else {
                     #if os(iOS)
                     switch settings.landscapeNowPlayingStyle {
@@ -89,11 +99,9 @@ struct NowPlayingView: View {
                 if isCompact, showsClassicChrome(isCompact: isCompact) {
                     HStack(spacing: 8) {
                         #if os(iOS)
-                        SoundEffectsButton(
-                            action: { showSoundEffects = true },
-                            diameter: 36,
-                            glyphSize: 14
-                        )
+                        // The EQ button used to sit here; the Coda copy
+                        // moved it into the "..." menu instead.
+                        soundEffectsMenu()
                         #endif
 
                         Button {
@@ -113,6 +121,19 @@ struct NowPlayingView: View {
                     .padding(.trailing, 20)
                 }
             }
+            #if os(iOS)
+            .overlay(alignment: .topTrailing) {
+                // The non-compact two-column page (iPad split-screen,
+                // iPhone landscape classic style) has no "..." menu
+                // anywhere else, so the equalizer gets one here. The
+                // landscape immersive page keeps its own utility row.
+                if !isCompact, settings.landscapeNowPlayingStyle == .classic {
+                    soundEffectsMenu()
+                        .padding(.top, 20)
+                        .padding(.trailing, 20)
+                }
+            }
+            #endif
             #if os(iOS)
             .overlay {
                 if settings.nowPlayingMode == .minimal && showQueueOnMobile {
@@ -196,6 +217,33 @@ struct NowPlayingView: View {
         #endif
     }
 
+    #if os(iOS)
+    /// The "..." menu for the classic and regular layouts: the equalizer
+    /// lives here (chen 2026-11-26), opening the same sound-effects sheet
+    /// as the immersive/vinyl/minimal menus. Styled like the other chrome
+    /// buttons (36pt circle; the landscape utility row passes 40 to match
+    /// its circleButton/RoutePicker buttons). macOS has no in-player
+    /// sheet — its EQ lives in Settings → 音效 — so this menu is iOS-only.
+    private func soundEffectsMenu(diameter: CGFloat = 36) -> some View {
+        Menu {
+            Button {
+                showSoundEffects = true
+            } label: {
+                Label("音效", systemImage: "waveform")
+            }
+        } label: {
+            Image(systemName: "ellipsis")
+                .font(.system(size: 14, weight: .semibold))
+                .foregroundStyle(.white.opacity(0.85))
+                .frame(width: diameter, height: diameter)
+                .background(.white.opacity(0.12), in: Circle())
+        }
+        .buttonStyle(.pressable)
+        .accessibilityLabel("更多操作")
+        .accessibilityIdentifier("playerMoreMenu")
+    }
+    #endif
+
     /// Collapse back to the browse UI. Shared by both platforms so the macOS
     /// layout can park it beside the window buttons (#128).
     private func collapseButton(diameter: CGFloat, glyphSize: CGFloat) -> some View {
@@ -243,19 +291,11 @@ struct NowPlayingView: View {
     }
 
     private var backdrop: some View {
+        // No wallpaper here: chen 2026-11-26 — the player never shows the
+        // wallpaper, only the pages do. (The wallpaper photo used to live in
+        // this backdrop; its unframed resizable image inflated the layout
+        // and pushed the bottom button row off-screen in the lyrics state.)
         ZStack {
-            #if os(iOS)
-            if let wallpaper = wallpaperLoader.image {
-                Image(platformImage: wallpaper)
-                    .resizable()
-                    .scaledToFill()
-                    .ignoresSafeArea()
-                // The veil keeps white lyrics readable over any photo; the
-                // artwork gradient below still tints the page.
-                Color.black.opacity(0.45)
-                    .ignoresSafeArea()
-            }
-            #endif
             FluidColorField(colors: colors)
                 .opacity(artworkGradientOpacity)
             RadialGradient(
@@ -271,14 +311,10 @@ struct NowPlayingView: View {
         .animation(.easeInOut(duration: 0.8), value: colors)
     }
 
-    /// The artwork gradient stays full-strength without a wallpaper; with
-    /// one it drops so the photo shows through while still tinting the page.
+    /// The artwork gradient is always full-strength: the player never shows
+    /// a wallpaper (chen 2026-11-26), so there is nothing to make room for.
     private var artworkGradientOpacity: Double {
-        #if os(iOS)
-        wallpaperLoader.image == nil ? 1 : 0.6
-        #else
         1
-        #endif
     }
 
     /// The cover colors as a slow-drifting field instead of a flat gradient:
@@ -302,13 +338,13 @@ struct NowPlayingView: View {
                         colors: [colors.primary, colors.secondary],
                         startPoint: .topLeading, endPoint: .bottomTrailing
                     )
-                    orb(colors.primary, diameter: span * 0.9, opacity: 0.55,
+                    orb(colors.primary, diameter: span * 1.05, opacity: 0.72,
                         base: CGPoint(x: geo.size.width * 0.22, y: geo.size.height * 0.20),
                         drift: CGVector(dx: 44, dy: -34), duration: 21)
-                    orb(colors.secondary, diameter: span * 0.8, opacity: 0.5,
+                    orb(colors.secondary, diameter: span * 0.9, opacity: 0.66,
                         base: CGPoint(x: geo.size.width * 0.82, y: geo.size.height * 0.78),
                         drift: CGVector(dx: -52, dy: 38), duration: 27)
-                    orb(.white, diameter: span * 0.55, opacity: 0.10,
+                    orb(.white, diameter: span * 0.6, opacity: 0.12,
                         base: CGPoint(x: geo.size.width * 0.5, y: geo.size.height * 0.42),
                         drift: CGVector(dx: 30, dy: 26), duration: 17)
                 }
@@ -431,8 +467,7 @@ struct NowPlayingView: View {
                 image: artworkImage, colors: colors,
                 // A full-screen blur redrawn 24 times a second is not worth it
                 // while nothing moves or the queue covers the lyrics.
-                isPaused: !player.isPlaying || showQueueOnMobile,
-                wallpaper: wallpaperLoader.image
+                isPaused: !player.isPlaying || showQueueOnMobile
             )
 
             VStack(spacing: 0) {
@@ -473,8 +508,6 @@ struct NowPlayingView: View {
         HStack(spacing: 10) {
             Spacer(minLength: 0)
 
-            SoundEffectsButton(action: { showSoundEffects = true })
-
             circleButton(
                 icon: "list.bullet", size: 15,
                 tint: showQueueOnMobile ? Theme.accent : nil
@@ -486,6 +519,11 @@ struct NowPlayingView: View {
             .accessibilityLabel(showQueueOnMobile ? "关闭播放队列" : "显示播放队列")
 
             RoutePickerButton(diameter: 40, glyphSize: 16)
+
+            // The EQ button used to sit in this row; the Coda copy moved
+            // it into the "..." menu instead (chen 2026-11-26). 40pt to
+            // match the row's other round buttons.
+            soundEffectsMenu(diameter: 40)
         }
     }
 
@@ -563,7 +601,6 @@ struct NowPlayingView: View {
         let image: PlatformImage?
         let colors: ArtworkColors
         var isPaused = false
-        var wallpaper: PlatformImage? = nil
 
         @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
@@ -579,20 +616,10 @@ struct NowPlayingView: View {
 
                 GeometryReader { geo in
                     ZStack {
-                        if let wallpaper {
-                            Image(platformImage: wallpaper)
-                                .resizable()
-                                .scaledToFill()
-                                .frame(width: geo.size.width, height: geo.size.height)
-                                .clipped()
-                            Color.black.opacity(0.4)
-                        }
-
                         LinearGradient(
                             colors: [colors.primary, colors.secondary],
                             startPoint: .topLeading, endPoint: .bottomTrailing
                         )
-                        .opacity(wallpaper == nil ? 1 : 0.55)
 
                         if let image {
                             Image(platformImage: image)
@@ -689,7 +716,8 @@ struct NowPlayingView: View {
 
             CompactTrackHeader(
                 showsExpandedArtwork: showsVinyl,
-                onOpenDestination: onOpenDestination
+                onOpenDestination: onOpenDestination,
+                onOpenSoundEffects: { showSoundEffects = true }
             )
                 .padding(.bottom, 10)
             #else
@@ -844,7 +872,16 @@ struct NowPlayingView: View {
 
     #if os(iOS)
     private func immersiveCompactLayout(size: CGSize) -> some View {
-        let artworkDimension = min(size.width - 112, size.height * 0.3, 250)
+        // Coda-sized cover: as wide as the column allows, and as tall as
+        // the space between the header and the controls allows. The
+        // MiniLyrics strip (96) plus its spacing is reserved, so the cover
+        // can never push the transport / utility row off-screen.
+        let middleHeight = size.height
+            - NowPlayingPresentationMetrics.immersiveHeaderTopInset
+            - ImmersiveArtworkTransition.compactArtworkDimension
+            - 14 // header bottom padding
+            - 200 // scrubber + transport + utility row + paddings
+        let artworkDimension = min(size.width - 64, middleHeight - 96 - 18 - 16, 340)
         let showsExpandedArtwork = !showLyricsOnMobile && !showQueueOnMobile
 
         return VStack(spacing: 0) {
@@ -855,7 +892,8 @@ struct NowPlayingView: View {
             CompactTrackHeader(
                 showsExpandedArtwork: showsExpandedArtwork,
                 onOpenDestination: onOpenDestination,
-                onTapArtwork: collapseImmersiveArtwork
+                onTapArtwork: collapseImmersiveArtwork,
+                onOpenSoundEffects: { showSoundEffects = true }
             )
             .padding(.bottom, 14)
 
@@ -951,8 +989,7 @@ struct NowPlayingView: View {
                 showsLyrics: showLyricsOnMobile,
                 showsQueue: showQueueOnMobile,
                 onToggleLyrics: toggleImmersiveLyrics,
-                onToggleQueue: toggleImmersiveQueue,
-                onOpenSoundEffects: { showSoundEffects = true }
+                onToggleQueue: toggleImmersiveQueue
             )
         }
         .padding(.top, 14)
@@ -966,7 +1003,7 @@ struct NowPlayingView: View {
             Color.clear
                 .frame(width: artworkDimension, height: artworkDimension)
                 .contentShape(Rectangle())
-                .onTapGesture(perform: showImmersiveLyrics)
+                .onTapGesture(perform: onTapImmersiveArtwork)
                 .anchorPreference(
                     key: ImmersiveArtworkFramePreferenceKey.self,
                     value: .bounds
@@ -1004,6 +1041,10 @@ struct NowPlayingView: View {
             radius: isExpanded ? (player.isPlaying ? 40 : 36) : 10,
             y: isExpanded ? (player.isPlaying ? 20 : 18) : 4
         )
+        // Coda's paused artwork: the expanded cover rests at 74% while
+        // paused and grows to full size on play, so playing vs paused is
+        // unmistakable. The header (collapsed) cover never shrinks.
+        .scaleEffect(isExpanded && !player.isPlaying ? 0.74 : 1)
         .animation(reduceMotion ? nil : AppAnimation.standard, value: player.isPlaying)
         .modifier(PlayingArtworkBounce(isPlaying: player.isPlaying, enabled: isExpanded))
     }
@@ -1034,6 +1075,19 @@ struct NowPlayingView: View {
         withAnimation(ImmersiveArtworkTransition.animation) {
             showLyricsOnMobile = false
             showQueueOnMobile = false
+        }
+    }
+
+    /// Tapping the expanded cover: with "点封面打开专辑" on it opens the
+    /// album (as Coda's artwork link does); otherwise it flips to the full
+    /// lyrics page. Lyrics and MiniLyrics stay reachable from the utility
+    /// row either way.
+    private func onTapImmersiveArtwork() {
+        if settings.openAlbumOnArtworkClick,
+           let album = player.currentTrack?.album, album.id > 0, !album.name.isEmpty {
+            onOpenDestination(.album(album.id))
+        } else {
+            showImmersiveLyrics()
         }
     }
 
@@ -1272,7 +1326,7 @@ struct NowPlayingView: View {
             VStack(spacing: 14) {
                 NowPlayingScrubber()
                     .frame(maxWidth: 380)
-                controls(showsSoundEffects: true)
+                controls()
             }
 
             Spacer()
@@ -1280,7 +1334,7 @@ struct NowPlayingView: View {
         .padding(.trailing, hasLyricsColumn ? 30 : 0)
     }
 
-    private func controls(showsSoundEffects: Bool = false) -> some View {
+    private func controls() -> some View {
         // Equal-width slots so the row always fits the screen: fixed-size
         // buttons in a plain HStack summed wider than a phone (≈430pt with the
         // like button), overflowing the layout and shoving the overlays and
@@ -1348,17 +1402,6 @@ struct NowPlayingView: View {
 
             RoutePickerButton(diameter: 40, glyphSize: 15)
                 .frame(maxWidth: .infinity)
-
-            #if os(iOS)
-            if showsSoundEffects {
-                SoundEffectsButton(
-                    action: { showSoundEffects = true },
-                    diameter: 40,
-                    glyphSize: 15
-                )
-                .frame(maxWidth: .infinity)
-            }
-            #endif
 
             if player.isFMMode {
                 Image(systemName: "wave.3.right.circle.fill")
@@ -1894,7 +1937,7 @@ private enum ImmersiveArtworkTransition {
         1,
         duration: 0.42
     )
-    static let compactArtworkDimension: CGFloat = 62
+    static let compactArtworkDimension: CGFloat = 72
     static let compactHeaderSpacing: CGFloat = 13
     static let expandedMetadataOffset = -(
         compactArtworkDimension + compactHeaderSpacing
@@ -1929,6 +1972,9 @@ private struct CompactTrackHeader: View {
     /// artwork). The real image floats above this placeholder with hit-testing
     /// disabled, so taps land here.
     var onTapArtwork: (() -> Void)? = nil
+    /// Opens the sound-effects sheet (equalizer). The button used to sit in
+    /// the player chrome; Coda keeps it in the "..." menu instead.
+    let onOpenSoundEffects: () -> Void
 
     var body: some View {
         HStack(spacing: ImmersiveArtworkTransition.compactHeaderSpacing) {
@@ -2013,6 +2059,14 @@ private struct CompactTrackHeader: View {
 
                         Divider()
                         #endif
+
+                        Button {
+                            onOpenSoundEffects()
+                        } label: {
+                            Label("音效", systemImage: "waveform")
+                        }
+
+                        Divider()
 
                         Button {
                             Platform.copyToPasteboard(
@@ -2167,7 +2221,6 @@ private struct CompactSecondaryControls: View {
     let showsQueue: Bool
     let onToggleLyrics: () -> Void
     let onToggleQueue: () -> Void
-    let onOpenSoundEffects: () -> Void
 
     var body: some View {
         HStack(spacing: 0) {
@@ -2179,13 +2232,6 @@ private struct CompactSecondaryControls: View {
 
             RoutePickerButton(diameter: 44, glyphSize: 17)
                 .frame(maxWidth: .infinity)
-
-            SoundEffectsButton(
-                action: onOpenSoundEffects,
-                diameter: 44,
-                glyphSize: 17
-            )
-            .frame(maxWidth: .infinity)
 
             secondaryButton(
                 icon: volumeIcon,
@@ -2747,12 +2793,6 @@ private struct MinimalTrackInfoRow: View {
                     HStack {
                         favoriteButton(for: track)
                         Spacer()
-                        SoundEffectsButton(
-                            action: onOpenSoundEffects,
-                            diameter: 44,
-                            glyphSize: 18,
-                            showsBackground: false
-                        )
                         moreMenu(for: track)
                     }
                 }
@@ -2763,12 +2803,6 @@ private struct MinimalTrackInfoRow: View {
 
                     if let track = player.currentTrack {
                         favoriteButton(for: track)
-                        SoundEffectsButton(
-                            action: onOpenSoundEffects,
-                            diameter: 44,
-                            glyphSize: 18,
-                            showsBackground: false
-                        )
                         moreMenu(for: track)
                     }
                 }
@@ -2860,6 +2894,14 @@ private struct MinimalTrackInfoRow: View {
 
             Divider()
             #endif
+
+            Button {
+                onOpenSoundEffects()
+            } label: {
+                Label("音效", systemImage: "waveform")
+            }
+
+            Divider()
 
             Button {
                 Platform.copyToPasteboard(

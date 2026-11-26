@@ -203,18 +203,27 @@ struct HomeView: View {
                         .padding(.horizontal, Theme.Layout.contentInset)
                     GeometryReader { geometry in
                         let size = Theme.Layout.fittedShelfCardSize(availableWidth: geometry.size.width, leadingInset: Theme.Layout.contentInset)
+                        // Two rows like Coda's new-albums shelf: each column
+                        // stacks two album cards, and the columns scroll
+                        // horizontally. Same cards, same data, same tap.
+                        let twoRowHeight = Theme.Layout.coverShelfHeight * 2 + 16
                         ScrollView(.horizontal, showsIndicators: false) {
                             LazyHStack(alignment: .top, spacing: 16) {
-                                ForEach(model.newAlbums) { album in
-                                    albumCard(album, size: size)
+                                ForEach(0..<(model.newAlbums.count + 1) / 2, id: \.self) { column in
+                                    VStack(alignment: .leading, spacing: 16) {
+                                        albumCard(model.newAlbums[column * 2], size: size)
+                                        if column * 2 + 1 < model.newAlbums.count {
+                                            albumCard(model.newAlbums[column * 2 + 1], size: size)
+                                        }
+                                    }
                                 }
                             }
                             .padding(.horizontal, Theme.Layout.contentInset)
-                            .frame(height: Theme.Layout.coverShelfHeight)
+                            .frame(height: twoRowHeight)
                         }
                         .shelfEdgeClip()
                     }
-                    .frame(height: Theme.Layout.coverShelfHeight)
+                    .frame(height: Theme.Layout.coverShelfHeight * 2 + 16)
                 }
             }
 

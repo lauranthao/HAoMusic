@@ -280,7 +280,7 @@ public struct IOSMainWindow: View {
                 tabStack(.home) { HomeView() }
             }
 
-            Tab("发现", systemImage: "square.grid.2x2", value: .explore) {
+            Tab("精选", systemImage: "square.grid.2x2", value: .explore) {
                 tabStack(.explore) { ExploreView() }
             }
 
@@ -356,7 +356,20 @@ public struct IOSMainWindow: View {
         @ViewBuilder _ content: () -> Content
     ) -> some View {
         NavigationStack(path: binding(for: tab)) {
-            content().appDestinations()
+            // The wallpaper lives inside the stack's content, not just at
+            // the window level: the iOS 26 TabView / NavigationStack paints
+            // its own system background behind the pages, which hid the
+            // window-level layer entirely (chen 2026-11-26). A background
+            // modifier on the content sits above that paint, so the photo
+            // shows through every tab page. It is a background only — it
+            // never joins the layout, so it cannot move content, the mini
+            // player, or the tab bar. Pushed detail pages keep the system
+            // background (their own views, not this root content).
+            content()
+                .appDestinations()
+                .background {
+                    WallpaperBackgroundView(image: wallpaperLoader.image)
+                }
         }
         .publishesWindowHorizontalInsets()
     }
@@ -391,7 +404,7 @@ extension IOSMainWindow {
     // Tab order kept as Kumone's (chen: don't change the menu bar).
     static let tabItems: [GlassTabBar.Item] = [
         .init(tab: .home, title: "推荐", icon: "house"),
-        .init(tab: .explore, title: "发现", icon: "square.grid.2x2"),
+        .init(tab: .explore, title: "精选", icon: "square.grid.2x2"),
         .init(tab: .fm, title: "漫游", icon: "dot.radiowaves.left.and.right"),
         .init(tab: .search, title: "搜索", icon: "magnifyingglass"),
         .init(tab: .library, title: "我的", icon: "person.crop.circle"),
