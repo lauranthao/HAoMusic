@@ -154,43 +154,11 @@ struct HomeView: View {
                     .padding(.top, 8)
             }
 
-            if !model.newAlbums.isEmpty {
-                VStack(alignment: .leading, spacing: Theme.Layout.sectionHeaderSpacing) {
-                    SectionHeader(title: "新碟上架")
-                        .padding(.horizontal, Theme.Layout.contentInset)
-                    GeometryReader { geometry in
-                        let size = Theme.Layout.fittedShelfCardSize(availableWidth: geometry.size.width, leadingInset: Theme.Layout.contentInset)
-                        ScrollView(.horizontal, showsIndicators: false) {
-                            LazyHStack(alignment: .top, spacing: 16) {
-                                ForEach(model.newAlbums) { album in
-                                    albumCard(album, size: size)
-                                }
-                            }
-                            .padding(.horizontal, Theme.Layout.contentInset)
-                            .frame(height: Theme.Layout.coverShelfHeight)
-                        }
-                        .shelfEdgeClip()
-                    }
-                    .frame(height: Theme.Layout.coverShelfHeight)
-                }
-            }
-
             if !model.recommendPlaylists.isEmpty {
                 Shelf(title: "推荐歌单", rowHeight: Theme.Layout.coverShelfHeight) {
                     ForEach(Array(model.recommendPlaylists.prefix(12).enumerated()), id: \.element.id) { index, playlist in
                         playlistCard(playlist)
                             .staggeredAppearance(index: index, id: "home-rec-\(playlist.id)")
-                    }
-                }
-            }
-
-            if !model.toplists.isEmpty {
-                Shelf(title: "排行榜", seeAll: nil, rowHeight: Theme.Layout.coverShelfHeight) {
-                    ForEach(model.toplists) { toplist in
-                        NavigationLink(value: Destination.playlist(toplist.id)) {
-                            toplistCard(toplist)
-                        }
-                        .buttonStyle(.plain)
                     }
                 }
             }
@@ -210,6 +178,43 @@ struct HomeView: View {
                         }
                         .buttonStyle(.plain)
                     }
+                }
+            }
+
+            if !model.toplists.isEmpty {
+                VStack(alignment: .leading, spacing: Theme.Layout.sectionHeaderSpacing) {
+                    SectionHeader(title: "排行榜")
+                        .padding(.horizontal, Theme.Layout.contentInset)
+                    VStack(alignment: .leading, spacing: 0) {
+                        ForEach(model.toplists) { toplist in
+                            NavigationLink(value: Destination.playlist(toplist.id)) {
+                                toplistRow(toplist)
+                            }
+                            .buttonStyle(.plain)
+                        }
+                    }
+                    .padding(.horizontal, Theme.Layout.contentInset)
+                }
+            }
+
+            if !model.newAlbums.isEmpty {
+                VStack(alignment: .leading, spacing: Theme.Layout.sectionHeaderSpacing) {
+                    SectionHeader(title: "新碟上架")
+                        .padding(.horizontal, Theme.Layout.contentInset)
+                    GeometryReader { geometry in
+                        let size = Theme.Layout.fittedShelfCardSize(availableWidth: geometry.size.width, leadingInset: Theme.Layout.contentInset)
+                        ScrollView(.horizontal, showsIndicators: false) {
+                            LazyHStack(alignment: .top, spacing: 16) {
+                                ForEach(model.newAlbums) { album in
+                                    albumCard(album, size: size)
+                                }
+                            }
+                            .padding(.horizontal, Theme.Layout.contentInset)
+                            .frame(height: Theme.Layout.coverShelfHeight)
+                        }
+                        .shelfEdgeClip()
+                    }
+                    .frame(height: Theme.Layout.coverShelfHeight)
                 }
             }
 
@@ -356,26 +361,40 @@ struct HomeView: View {
         .buttonStyle(.plain)
     }
 
-    private func toplistCard(_ toplist: ToplistItem) -> some View {
-        VStack(alignment: .leading, spacing: 8) {
-            ZStack(alignment: .bottomLeading) {
-                CachedAsyncImage(url: toplist.coverImgUrl?.resizedImageURL(384))
-                    .frame(width: Theme.Layout.cardSize, height: Theme.Layout.cardSize)
-                    .clipShape(RoundedRectangle(cornerRadius: Theme.Radius.standard, style: .continuous))
-                LinearGradient(colors: [.clear, .black.opacity(0.55)], startPoint: .center, endPoint: .bottom)
-                    .clipShape(RoundedRectangle(cornerRadius: Theme.Radius.standard, style: .continuous))
-                Text(toplist.updateFrequency ?? "")
-                    .font(.system(size: 10, weight: .medium))
-                    .foregroundStyle(.white.opacity(0.9))
-                    .padding(8)
+    private func toplistRow(_ toplist: ToplistItem) -> some View {
+        HStack(alignment: .center, spacing: 12) {
+            CachedAsyncImage(url: toplist.coverImgUrl?.resizedImageURL(256))
+                .frame(width: 64, height: 64)
+                .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
+            VStack(alignment: .leading, spacing: 3) {
+                Text(toplist.name)
+                    .font(.system(size: 16, weight: .bold))
+                    .foregroundStyle(.primary)
+                    .lineLimit(1)
+                if toplist.tracks.isEmpty {
+                    // No track previews: fall back to the update frequency.
+                    // Guarded so a missing frequency leaves no empty line.
+                    if let frequency = toplist.updateFrequency, !frequency.isEmpty {
+                        Text(frequency)
+                            .font(.system(size: 13))
+                            .foregroundStyle(.secondary)
+                            .lineLimit(1)
+                    }
+                } else {
+                    ForEach(Array(toplist.tracks.prefix(3).enumerated()), id: \.offset) { index, track in
+                        Text("\(index + 1) \(track.first) - \(track.second)")
+                            .font(.system(size: 13))
+                            .foregroundStyle(.secondary)
+                            .lineLimit(1)
+                    }
+                }
             }
-            .frame(width: Theme.Layout.cardSize, height: Theme.Layout.cardSize)
-            Text(toplist.name)
-                .font(.system(size: 13, weight: .medium))
-                .foregroundStyle(.primary)
-                .lineLimit(1)
+            Spacer()
+            Image(systemName: "chevron.right")
+                .font(.caption)
+                .foregroundStyle(.tertiary)
         }
-        .frame(width: Theme.Layout.cardSize, alignment: .leading)
+        .padding(.vertical, 12)
         .contentShape(Rectangle())
     }
 

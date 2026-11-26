@@ -357,6 +357,8 @@
 		5102B4C8A5474B9C9838E401 = {isa = PBXBuildFile; fileRef = 43E5FDC109E0448C95375FEE; };
 		24030E9AA1BF41FF804AEE79 = {isa = PBXBuildFile; fileRef = F957505529594607BCFB16FB; };
 		68D5C42009DE4B829F8F18F0 = {isa = PBXBuildFile; fileRef = EFD9CE84E8C64392A807A47E; };
+		D2AA0D2A878F408CAF4A5762 = {isa = PBXFileReference; lastKnownFileType = text; path = ThirdPartyNotices/README.md; sourceTree = SOURCE_ROOT; };
+		4F1E08B66E8C47C7B0327D40 = {isa = PBXBuildFile; fileRef = D2AA0D2A878F408CAF4A5762; };
 		083D1C293F7150DE155BA259 = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ShortcutSettingsView.swift; sourceTree = "<group>"; };
 		A0D5C05CE56B25BEFDFCB2AF = {isa = PBXBuildFile; fileRef = 083D1C293F7150DE155BA259; };
 		8E7E3CA22543488AA1E05BEF = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StemModelsSettingsSection.swift; sourceTree = "<group>"; };
@@ -964,6 +966,7 @@
 				31A6AD0B4AFF27530759AFF3,
 				F957505529594607BCFB16FB,
 				EFD9CE84E8C64392A807A47E,
+				D2AA0D2A878F408CAF4A5762,
 			);
 			name = Resources;
 			path = Resources;
@@ -1233,6 +1236,7 @@
 				1492963717952B241BA59E23,
 				24030E9AA1BF41FF804AEE79,
 				68D5C42009DE4B829F8F18F0,
+				4F1E08B66E8C47C7B0327D40,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

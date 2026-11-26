@@ -18,9 +18,8 @@ struct HAoAboutInfo {
     var repositoryURL: URL? { URL(string: "https://github.com/lauranthao/HAoMusic") }
     var issuesURL: URL? { repositoryURL?.appendingPathComponent("issues") }
     var releasesURL: URL? { repositoryURL?.appendingPathComponent("releases") }
-    /// The maintained third-party index in the repository. It names the
-    /// upstream projects, so it is linked out to the browser rather than
-    /// rendered inside the app.
+    /// The same third-party index on GitHub, used as the fallback link when
+    /// the bundled copy cannot be read.
     static var thirdPartyNoticesURL: URL? {
         URL(string: "https://github.com/lauranthao/HAoMusic/blob/master/ThirdPartyNotices/README.md")
     }
@@ -224,13 +223,201 @@ private struct AboutLinkRow: View {
     }
 }
 
+// MARK: - Third-party index parser
+
+/// Minimal parser for ThirdPartyNotices/README.md: `## ` headings start a
+/// group, `| ... |` rows are its table. The first table row in a group is
+/// its header (column 0 is the name; the column headed 许可证 is the
+/// license; the rest are notes), separator rows are skipped, every other row
+/// is an entry. Written for this file's actual shape; rows that do not fit
+/// are skipped rather than crashing.
+///
+/// Pure Foundation — no SwiftUI — so it can be exercised outside the app.
+struct ThirdPartyNoticeEntry: Equatable {
+    let name: String
+    let url: URL?
+    let license: String?
+    let note: String?
+}
+
+struct ThirdPartyNoticeGroup: Equatable {
+    let title: String
+    let entries: [ThirdPartyNoticeEntry]
+    /// Prose lines under the heading, outside any table, if any.
+    let note: String?
+}
+
+enum ThirdPartyNotices {
+    /// The bundled ThirdPartyNotices/README.md, if it is in the app bundle.
+    static var bundledMarkdown: String? {
+        let candidates = [
+            Bundle.main.url(forResource: "README", withExtension: "md"),
+            Bundle.main.url(forResource: "README", withExtension: "md",
+                            subdirectory: "ThirdPartyNotices"),
+        ]
+        for url in candidates {
+            if let url, let text = try? String(contentsOf: url, encoding: .utf8) {
+                return text
+            }
+        }
+        return nil
+    }
+
+    static func parse(_ markdown: String) -> [ThirdPartyNoticeGroup] {
+        var groups: [ThirdPartyNoticeGroup] = []
+        var title: String?
+        var entries: [ThirdPartyNoticeEntry] = []
+        var prose: [String] = []
+        var roles: [Role]?
+
+        func flush() {
+            if let title {
+                groups.append(ThirdPartyNoticeGroup(
+                    title: title,
+                    entries: entries,
+                    note: prose.isEmpty ? nil : prose.joined(separator: "\n")))
+            }
+            title = nil
+            entries = []
+            prose = []
+            roles = nil
+        }
+
+        for rawLine in markdown.components(separatedBy: .newlines) {
+            let line = rawLine.trimmingCharacters(in: .whitespaces)
+            if line.hasPrefix("## ") {
+                flush()
+                title = stripNumbering(String(line.dropFirst(3)))
+                continue
+            }
+            guard title != nil else { continue }
+            if line.hasPrefix("|") {
+                let cells = splitRow(line)
+                guard !cells.isEmpty else { continue }
+                if cells.allSatisfy({ $0.allSatisfy({ "-: ".contains($0) }) }) {
+                    continue  // separator row
+                }
+                if roles == nil {
+                    roles = rolesForHeader(cells)
+                    continue
+                }
+                if let entry = entry(from: cells, roles: roles!) {
+                    entries.append(entry)
+                }
+                continue
+            }
+            if !line.isEmpty {
+                prose.append(stripLinks(line))
+            }
+        }
+        flush()
+        return groups
+    }
+
+    private enum Role { case name, license, note }
+
+    private static func rolesForHeader(_ cells: [String]) -> [Role] {
+        cells.enumerated().map { index, cell in
+            if index == 0 { return .name }
+            if cell.contains("许可证") { return .license }
+            return .note
+        }
+    }
+
+    private static func entry(from cells: [String], roles: [Role]) -> ThirdPartyNoticeEntry? {
+        var name = ""
+        var url: URL?
+        var license: String?
+        var notes: [String] = []
+        for (index, cell) in cells.enumerated() {
+            let role = index < roles.count ? roles[index] : .note
+            switch role {
+            case .name:
+                if let link = firstLink(in: cell) {
+                    name = link.text
+                    url = link.url
+                } else {
+                    name = stripLinks(cell).trimmingCharacters(in: .whitespaces)
+                }
+            case .license:
+                license = cleanLicense(cell)
+            case .note:
+                let text = stripLinks(cell).trimmingCharacters(in: .whitespaces)
+                if !text.isEmpty { notes.append(text) }
+            }
+        }
+        guard !name.isEmpty else { return nil }
+        return ThirdPartyNoticeEntry(
+            name: name, url: url, license: license,
+            note: notes.isEmpty ? nil : notes.joined(separator: " · "))
+    }
+
+    private static func splitRow(_ line: String) -> [String] {
+        var body = line[...]
+        if body.hasPrefix("|") { body = body.dropFirst() }
+        if body.hasSuffix("|") { body = body.dropLast() }
+        return body.split(separator: "|", omittingEmptySubsequences: false)
+            .map { $0.trimmingCharacters(in: .whitespaces) }
+    }
+
+    /// First `[text](target)` in the cell, if any. Only http(s) targets
+    /// become URLs; relative targets (repo files) yield the text alone.
+    private static func firstLink(in text: String) -> (text: String, url: URL?)? {
+        guard let open = text.firstIndex(of: "["),
+              let close = text[open...].firstIndex(of: "]"),
+              text.index(after: close) < text.endIndex,
+              text[text.index(after: close)] == "(",
+              let paren = text[close...].firstIndex(of: ")") else {
+            return nil
+        }
+        let name = String(text[text.index(after: open)..<close])
+        let target = String(text[text.index(close, offsetBy: 2)..<paren])
+        let url = target.hasPrefix("http") ? URL(string: target) : nil
+        return (name, url)
+    }
+
+    /// Replaces every `[text](target)` with `text`, drops backticks.
+    private static func stripLinks(_ text: String) -> String {
+        var result = ""
+        var rest = text[...]
+        while let open = rest.firstIndex(of: "["),
+              let close = rest[open...].firstIndex(of: "]"),
+              rest.index(after: close) < rest.endIndex,
+              rest[rest.index(after: close)] == "(",
+              let paren = rest[close...].firstIndex(of: ")") {
+            result += rest[..<open]
+            result += rest[rest.index(after: open)..<close]
+            rest = rest[rest.index(after: paren)...]
+        }
+        result += rest
+        return result.replacingOccurrences(of: "`", with: "")
+    }
+
+    private static func cleanLicense(_ text: String) -> String? {
+        var value = stripLinks(text)
+        if let cut = value.firstIndex(where: { $0 == "（" || $0 == "(" }) {
+            value = String(value[..<cut])
+        }
+        value = value.trimmingCharacters(in: .whitespaces)
+        if value.isEmpty || value == "—" || value == "-" { return nil }
+        return value
+    }
+
+    private static func stripNumbering(_ title: String) -> String {
+        guard let dot = title.firstIndex(of: "."),
+              title[..<dot].allSatisfy(\.isNumber) else {
+            return title
+        }
+        return title[title.index(after: dot)...].trimmingCharacters(in: .whitespaces)
+    }
+}
+
 // MARK: - Licenses
 
 /// The license texts bundled with the app, read from the bundle at display
 /// time so they never drift from the files in the repository. The
-/// ThirdPartyNotices index itself is not bundled: it names the upstream
-/// projects, and the app UI never names them — the full index is linked out
-/// to the browser instead (see `OpenSourceLicensesView`).
+/// third-party index (ThirdPartyNotices/README.md) is bundled the same way
+/// and parsed by `ThirdPartyNotices` below.
 enum HAoLegalDocument: String, CaseIterable, Identifiable {
     case license = "LICENSE"
     case lgpl = "LICENSE-LGPL-3.0.txt"
@@ -273,10 +460,10 @@ enum HAoLegalDocument: String, CaseIterable, Identifiable {
     }
 }
 
-/// HAo Music's own license plus the third-party projects it builds on.
+/// HAo Music's own license plus the full third-party index from the
+/// bundled ThirdPartyNotices/README.md.
 struct OpenSourceLicensesView: View {
     @State private var document: HAoLegalDocument?
-    @Environment(\.openURL) private var openURL
 
     var body: some View {
         Form {
@@ -288,17 +475,37 @@ struct OpenSourceLicensesView: View {
                 Text("许可证")
             }
 
-            Section("致谢") {
-                Text("HAo Music 使用了以下开源项目：Beans-Music（MIT）、QQMusicApi（GPL-3.0）、simple-music（GPL-3.0）。各项目的许可证以其仓库中的文本为准。")
-                    .font(.subheadline)
-                    .foregroundStyle(.secondary)
-                if let url = HAoAboutInfo.thirdPartyNoticesURL {
-                    AboutLinkRow(
-                        title: "在 GitHub 查看完整第三方声明",
-                        systemImage: "doc.text.magnifyingglass",
-                        detail: nil,
-                        url: url
-                    )
+            if let text = ThirdPartyNotices.bundledMarkdown {
+                let groups = ThirdPartyNotices.parse(text)
+                if groups.isEmpty {
+                    // The file is there but nothing parsed — show it raw.
+                    Section("第三方声明") {
+                        ScrollView {
+                            Text(verbatim: text)
+                                .font(.system(.footnote, design: .monospaced))
+                                .textSelection(.enabled)
+                                .frame(maxWidth: .infinity, alignment: .leading)
+                        }
+                        .frame(minHeight: 240)
+                        thirdPartyLinkRow()
+                    }
+                } else {
+                    ForEach(Array(groups.enumerated()), id: \.offset) { _, group in
+                        Section(LocalizedStringKey(group.title)) {
+                            if let note = group.note {
+                                Text(note)
+                                    .font(.subheadline)
+                                    .foregroundStyle(.secondary)
+                            }
+                            ForEach(Array(group.entries.enumerated()), id: \.offset) { _, entry in
+                                noticeRow(entry)
+                            }
+                        }
+                    }
+                }
+            } else {
+                Section("致谢") {
+                    thirdPartyLinkRow()
                 }
             }
 
@@ -313,6 +520,50 @@ struct OpenSourceLicensesView: View {
         .navigationBarTitleDisplayMode(.inline)
         #endif
         .sheet(item: $document) { LegalDocumentSheet(document: $0) }
+    }
+
+    @ViewBuilder
+    private func thirdPartyLinkRow() -> some View {
+        if let url = HAoAboutInfo.thirdPartyNoticesURL {
+            AboutLinkRow(
+                title: "在 GitHub 查看完整第三方声明",
+                systemImage: "doc.text.magnifyingglass",
+                detail: nil,
+                url: url
+            )
+        }
+    }
+
+    @ViewBuilder
+    private func noticeRow(_ entry: ThirdPartyNoticeEntry) -> some View {
+        let content = HStack {
+            VStack(alignment: .leading, spacing: 3) {
+                Text(verbatim: entry.name)
+                if let license = entry.license {
+                    Text(verbatim: license)
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+                if let note = entry.note {
+                    Text(verbatim: note)
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+            }
+            Spacer()
+            if entry.url != nil {
+                Image(systemName: "arrow.up.right")
+                    .font(.caption)
+                    .foregroundStyle(.tertiary)
+            }
+        }
+        .contentShape(Rectangle())
+        if let url = entry.url {
+            Link(destination: url) { content }
+                .buttonStyle(.plain)
+        } else {
+            content
+        }
     }
 
     private func documentRow(_ doc: HAoLegalDocument) -> some View {
