@@ -29,7 +29,7 @@ struct WallpaperSettingsView: View {
                 PhotosPicker(selection: $photoItem, matching: .images) {
                     Label("从相册选择", systemImage: "photo")
                 }
-                .onChange(of: photoItem) { _, item in
+                .onChange(of: photoItem) { item in
                     guard let item else { return }
                     importPhoto(item)
                 }

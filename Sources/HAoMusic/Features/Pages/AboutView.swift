@@ -66,7 +66,7 @@ struct AboutSections: View {
                 AboutLinkRow(title: "版本发布", systemImage: "shippingbox", detail: nil, url: url)
             }
 
-            NavigationLink(value: SettingsPage.licenses) {
+            NavigationLink(value: SettingsView.SettingsPage.licenses) {
                 Label("开源许可与致谢", systemImage: "doc.text")
             }
 
