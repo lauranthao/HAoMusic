@@ -537,6 +537,27 @@ final class QQMusicAuth: ObservableObject {
         return min(max(due.timeIntervalSince(now), 60), 3600)
     }
 
+    /// Parses a QQ session-renewal response into credentials.
+    /// Response parsing only (from Coda's QQMusicAdditionalLogin.credentials);
+    /// the WeChat login itself was NOT copied.
+    private static func renewedCredentials(_ data: [String: Any], defaultLoginType: Int) throws -> (credentials: [String: String], nickname: String) {
+        func string(_ value: Any?) -> String? {
+            let value = (value as? String) ?? (value as? NSNumber)?.stringValue ?? ""
+            return value.isEmpty ? nil : value
+        }
+        let id = [data["str_musicid"], data["musicid"]].compactMap(string).first { $0 != "0" }
+        guard let id, let key = string(data["musickey"]) else { throw ProviderRequestError.decoding("QQ Music credentials") }
+        let loginType = (data["loginType"] as? Int) ?? defaultLoginType
+        var result = ["uin": id, "str_musicid": id, "qqmusic_key": key, "qm_keyst": key, "musickey": key,
+                      "music_login_type": String(loginType)]
+        if loginType == 1 { result["wxuin"] = "o" + id }
+        for key in ["encryptUin", "openid", "unionid", "refresh_token", "refresh_key", "musickeyCreateTime", "keyExpiresIn", "logo", "nick"] {
+            result[key] = string(data[key])
+        }
+        if loginType == 1 { result["wxopenid"] = result["openid"] }
+        return (result, result["nick"] ?? "QQ 音乐用户")
+    }
+
     @MainActor
     private func renewCredential(force: Bool, api: QQMusicAPI) async -> Bool {
         let saved = cookies
@@ -560,7 +581,7 @@ final class QQMusicAuth: ObservableObject {
             return false
         }
         guard !Task.isCancelled, cookies == saved else { return false }
-        guard let renewed = try? QQMusicAdditionalLogin.credentials(data, defaultLoginType: credential.loginType),
+        guard let renewed = try? Self.renewedCredentials(data, defaultLoginType: credential.loginType),
               renewed.credentials["str_musicid"] == credential.id else {
             renewalRetryAt = Date().addingTimeInterval(Self.renewalRetryDelay)
             return false

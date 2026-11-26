@@ -16,6 +16,11 @@ enum MusicAccountValidity: String {
     case unknown = "暂无法验证"
 }
 
+extension Notification.Name {
+    static let qqLoginDidUpdate = Notification.Name("coda.qqLoginDidUpdate")
+    static let kugouLoginDidUpdate = Notification.Name("coda.kugouLoginDidUpdate")
+}
+
 enum MusicProviderError: LocalizedError {
     case unsupported, missingTrack, storage(OSStatus)
     var errorDescription: String? {
