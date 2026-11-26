@@ -479,7 +479,7 @@ final class SettingsManager: ObservableObject {
         desktopLyricsCentered = defaults.object(forKey: Keys.desktopLyricsCentered) as? Bool ?? false
         showMainWindowAmbientBackground = defaults.object(
             forKey: Keys.mainWindowAmbientBackground
-        ) as? Bool ?? true
+        ) as? Bool ?? false
         let storedAmbientBackgroundIntensity = defaults.object(
             forKey: Keys.mainWindowAmbientBackgroundIntensity
         ) as? Double ?? 1
