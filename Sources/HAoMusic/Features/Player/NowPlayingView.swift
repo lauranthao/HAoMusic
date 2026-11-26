@@ -16,6 +16,7 @@ struct NowPlayingView: View {
     #if os(iOS)
     @Environment(\.dismissNowPlayingAction) private var dismissNowPlayingAction
     @Environment(\.dismissNowPlayingDragAction) private var dismissNowPlayingDragAction
+    @Environment(\.dismissNowPlayingThenAction) private var dismissNowPlayingThenAction
     #endif
 
     #if os(iOS)

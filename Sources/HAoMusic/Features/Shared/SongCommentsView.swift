@@ -35,8 +35,9 @@ struct SongCommentsView: View {
     @State private var detent: PresentationDetent = .medium
     #endif
 
-    init(track: Track) {
+    init(track: Track, onClose: (() -> Void)? = nil) {
         self.track = track
+        self.onClose = onClose
         _content = StateObject(wrappedValue: SongCommentsContent(songID: track.id))
     }
 
