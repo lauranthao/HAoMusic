@@ -6,10 +6,10 @@ import SwiftUI
 /// Phone only: iPad/desktop keep their own wide headers.
 /// Pages stay on the plain system background — no artwork tint.
 struct PlaylistDetailHero<Actions: View>: View {
-    let coverURL: URL?
+    let coverURL: String?
     let title: String
     let subtitle: String
-    let avatarURL: URL?
+    let avatarURL: String?
     let metadataText: String
     var circularArtwork = false
     var showsAvatar = true

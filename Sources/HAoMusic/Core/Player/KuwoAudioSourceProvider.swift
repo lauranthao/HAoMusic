@@ -12,7 +12,7 @@ struct KuwoAudioSourceProvider: AudioSourceProvider {
 
     func resolve(track: Track) async throws -> ResolvedAudioSource? {
         guard let match = try await searchMatch(track: track) else { return nil }
-        return try await resolve(match: match, track: track)
+        return try await resolve(match: .kuwo(rid: match), track: track)
     }
 
     /// The cached match path: no search, straight to the convert URL.

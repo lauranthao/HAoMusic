@@ -13,7 +13,7 @@ struct KugouAudioSourceProvider: AudioSourceProvider {
 
     func resolve(track: Track) async throws -> ResolvedAudioSource? {
         guard let match = try await searchMatch(track: track) else { return nil }
-        return try await resolve(match: match, track: track)
+        return try await resolve(match: .kugou(hash: match.hash, albumID: match.albumID), track: track)
     }
 
     /// The cached match path: no search, straight to the stream URL.

@@ -104,7 +104,7 @@ enum UnblockService {
                     failed.insert(sources[index].id)
                 }
                 // The first source in order decides once everything before it failed.
-                for (position, state) in states.enumerated() {
+                for (_, state) in states.enumerated() {
                     if case .found(let resolved) = state {
                         return (resolved, failed)
                     }

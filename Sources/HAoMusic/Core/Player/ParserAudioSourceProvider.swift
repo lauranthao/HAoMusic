@@ -132,7 +132,7 @@ struct ParserAudioSourceProvider: AudioSourceProvider {
         /// The stream when it is the same recording as the query. A missing
         /// duration (the KuGou endpoint omits it) is checked by size instead.
         func streamURL(for track: Track) -> URL? {
-            guard code == 200, let urlString else { return nil }
+            guard code == 200, let urlString = url else { return nil }
             let duration = durationMS ?? track.durationMS
             guard AudioSourceTrackMatcher.matches(
                 track: track, title: name, artist: artist, durationMS: duration
