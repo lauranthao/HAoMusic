@@ -1,29 +1,12 @@
 import Combine
 import Foundation
 
-/// Which platform the signed-in account belongs to. HAo's comments and
-/// favorites are NetEase-only (the copied Coda player files gate on it);
-/// QQ sign-in does not set a NetEase provider. Minimal by design: only the
-/// cases the copied player code reads.
-enum MusicProvider {
-    case netease
-    case none
-
-    /// Whether the current account may change favorites.
-    var supportsFavoriteChanges: Bool { self == .netease }
-}
-
 /// Login state and the user's library: profile, liked track IDs, playlists.
 @MainActor
 final class AccountStore: ObservableObject {
     static let shared = AccountStore()
 
     @Published var profile: UserProfile?
-    /// Counts completed favorite toggles; the copied player heart button
-    /// bounces once per confirmed toggle.
-    private(set) var sessionRevision = 0
-    /// The platform of the signed-in account (see MusicProvider above).
-    var provider: MusicProvider { hasAuthCookie ? .netease : .none }
     @Published var likedTrackIDs: Set<Int> = []
     @Published var userPlaylists: [PlaylistSummary] = []
     @Published var likedAlbums: [AlbumSummary] = []
@@ -164,7 +147,6 @@ final class AccountStore: ObservableObject {
         if like { likedTrackIDs.insert(trackID) } else { likedTrackIDs.remove(trackID) }
         do {
             try await MusicAPI.likeTrack(id: trackID, like: like)
-            sessionRevision &+= 1
         } catch {
             guard scope == offlineScope else { return }
             if like { likedTrackIDs.remove(trackID) } else { likedTrackIDs.insert(trackID) }
@@ -182,7 +164,6 @@ final class AccountStore: ObservableObject {
         let revokeSession = SyncService.shared.shouldRevokeLoginSession(accountID: authenticatedAccountID)
         try MusicClient.shared.clearAuthCookies()
         bootstrapGeneration += 1
-        sessionRevision &+= 1
         AccountSnapshotStorage.shared.clear()
         applyProfile(nil, binding: nil)
         if revokeSession { try await MusicAPI.logout(detachedCookies: cookies) }

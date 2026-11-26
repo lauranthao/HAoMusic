@@ -2,7 +2,6 @@ import Accelerate
 import AVFoundation
 import Combine
 import Foundation
-import os
 #if os(iOS)
 import MediaToolbox
 #endif
@@ -89,12 +88,6 @@ final class AudioSpectrum: ObservableObject {
         store.level(at: index)
     }
 
-    /// Peaks the fluid background consumed since the last call (bass/melody
-    /// onsets). Verbatim from Coda; the store graft below feeds it.
-    func takeOnsets() -> SpectrumOnsetMailbox.Peaks {
-        store.onsets.take(now: ProcessInfo.processInfo.systemUptime)
-    }
-
 
     #if os(macOS)
     /// One buffer of the engine's final output. Called on a real-time audio
@@ -154,62 +147,6 @@ final class AudioSpectrum: ObservableObject {
     }
 }
 
-/// Positive spectral change with a moving noise floor and a short refractory period.
-/// Independently implemented from standard spectral-flux/onset concepts used by aubio.
-/// Verbatim from Coda's AudioSpectrum.swift; feeds the fluid background's onsets.
-struct SpectrumOnsetDetector {
-    private var average: Float = 0
-    private var deviation: Float = 0
-    private var cooldown: Float = 0
-    private var primed = false
-
-    mutating func advance(flux: Float, audible: Bool, delta: Float) -> Float {
-        cooldown = max(0, cooldown - delta)
-        guard primed else {
-            primed = true
-            average = flux
-            return 0
-        }
-        let threshold = max(0.012, average + deviation * 1.5)
-        let onset = audible && cooldown == 0 && flux > threshold
-            ? min(1, (flux - threshold) / max(0.05, threshold * 2)) : 0
-        let coefficient = 1 - expf(-delta / 0.45)
-        deviation += (abs(flux - average) - deviation) * coefficient
-        average += (flux - average) * coefficient
-        if onset > 0 { cooldown = 0.08 }
-        return onset
-    }
-}
-
-/// A peak mailbox: audio never waits for the UI; undelivered peaks are retried.
-/// Verbatim from Coda's AudioSpectrum.swift.
-final class SpectrumOnsetMailbox: @unchecked Sendable {
-    struct Peaks: Sendable {
-        var bass: Float = 0
-        var melody: Float = 0
-        var timestamp: TimeInterval = 0
-    }
-    private let storage = OSAllocatedUnfairLock(initialState: Peaks())
-
-    func publish(bass: Float, melody: Float, now: TimeInterval) -> Bool {
-        storage.withLockIfAvailable { peaks in
-            if now - peaks.timestamp > 0.15 { peaks = Peaks() }
-            peaks.bass = max(peaks.bass, bass)
-            peaks.melody = max(peaks.melody, melody)
-            if bass > 0 || melody > 0 { peaks.timestamp = now }
-            return true
-        } == true
-    }
-
-    func take(now: TimeInterval) -> Peaks {
-        storage.withLock { peaks in
-            let result = now - peaks.timestamp <= 0.15 ? peaks : Peaks()
-            peaks = Peaks()
-            return result
-        }
-    }
-}
-
 // MARK: - Lock-free store shared with the audio thread
 
 #if os(macOS)
@@ -241,12 +178,6 @@ private final class SpectrumStore: @unchecked Sendable {
     private let realp: UnsafeMutablePointer<Float>
     private let imagp: UnsafeMutablePointer<Float>
     private let magnitudes: UnsafeMutablePointer<Float>
-    /// Previous frame's compressed magnitudes, for onset flux. (Coda graft.)
-    private let previousMagnitudes: UnsafeMutablePointer<Float>
-    private let detectors: UnsafeMutablePointer<SpectrumOnsetDetector>
-    let onsets = SpectrumOnsetMailbox()
-    private var pendingBass: Float = 0
-    private var pendingMelody: Float = 0
     private let fftSetup: FFTSetup?
 
     #if os(macOS)
@@ -284,10 +215,6 @@ private final class SpectrumStore: @unchecked Sendable {
         realp = .allocate(capacity: Self.binCount)
         imagp = .allocate(capacity: Self.binCount)
         magnitudes = .allocate(capacity: Self.binCount)
-        previousMagnitudes = .allocate(capacity: Self.binCount)
-        previousMagnitudes.initialize(repeating: 0, count: Self.binCount)
-        detectors = .allocate(capacity: AudioSpectrum.bandCount)
-        detectors.initialize(repeating: SpectrumOnsetDetector(), count: AudioSpectrum.bandCount)
         binLo = .allocate(capacity: AudioSpectrum.bandCount)
         binHi = .allocate(capacity: AudioSpectrum.bandCount)
         windowHiDB = .allocate(capacity: AudioSpectrum.bandCount)
@@ -315,9 +242,6 @@ private final class SpectrumStore: @unchecked Sendable {
         realp.deallocate()
         imagp.deallocate()
         magnitudes.deallocate()
-        previousMagnitudes.deallocate()
-        detectors.deinitialize(count: AudioSpectrum.bandCount)
-        detectors.deallocate()
         binLo.deallocate()
         binHi.deallocate()
         windowHiDB.deallocate()
@@ -341,11 +265,6 @@ private final class SpectrumStore: @unchecked Sendable {
             windowHiDB[i] = band.ceilingDB
             windowLoDB[i] = band.floorDB
         }
-        previousMagnitudes.update(repeating: 0, count: Self.binCount)
-        for i in 0..<AudioSpectrum.bandCount { detectors[i] = SpectrumOnsetDetector() }
-        pendingBass = 0
-        pendingMelody = 0
-        _ = onsets.take(now: ProcessInfo.processInfo.systemUptime)
         ringFill = 0
         liveFlag.pointee = 0
     }
@@ -567,8 +486,6 @@ private final class SpectrumStore: @unchecked Sendable {
         let riseCoefficient = 1 - expf(-dt / Self.windowRiseSeconds)
         let fallCoefficient = 1 - expf(-dt / Self.windowFallSeconds)
 
-        pendingBass *= expf(-dt / 0.15)
-        pendingMelody *= expf(-dt / 0.15)
         for i in 0..<AudioSpectrum.bandCount {
             let lo = Int(binLo[i])
             let hi = Int(binHi[i])
@@ -580,17 +497,6 @@ private final class SpectrumStore: @unchecked Sendable {
             if mean > 1e-7 { sawSignal = true }
 
             let db = 20 * log10f(max(mean, 1e-9))
-            // Log compression makes changes in softer partials useful without
-            // letting a loud sustained fundamental dominate the onset measure.
-            var flux: Float = 0
-            for bin in lo...hi {
-                let compressed = log1pf(magnitudes[bin] * 1000)
-                flux += max(0, compressed - previousMagnitudes[bin])
-            }
-            flux /= Float(hi - lo + 1)
-            let onset = detectors[i].advance(flux: flux, audible: db > Self.silenceDB, delta: dt)
-            if i == 0 { pendingBass = max(pendingBass, onset) }
-            if i == 1 || i == 2 { pendingMelody = max(pendingMelody, onset) }
 
             // Move the window's edges toward what this band is actually doing:
             // snap out to a new extreme, creep back in otherwise.
@@ -624,14 +530,6 @@ private final class SpectrumStore: @unchecked Sendable {
             levels[i] = previous + (target - previous) * coefficient
         }
 
-        for bin in 0..<Self.binCount {
-            previousMagnitudes[bin] = log1pf(magnitudes[bin] * 1000)
-        }
-        if onsets.publish(bass: pendingBass, melody: pendingMelody,
-                          now: ProcessInfo.processInfo.systemUptime) {
-            pendingBass = 0
-            pendingMelody = 0
-        }
         if sawSignal { liveFlag.pointee = 1 }
     }
 }

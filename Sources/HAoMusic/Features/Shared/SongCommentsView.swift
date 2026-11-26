@@ -24,9 +24,6 @@ struct SongCommentsMenuButton: View {
 /// A song's hot and latest comments, presented as a sheet on both platforms.
 struct SongCommentsView: View {
     let track: Track
-    /// When embedded in a panel instead of a sheet (the portrait player's
-    /// comments panel), the header's xmark calls this instead of dismiss().
-    var onClose: (() -> Void)? = nil
 
     @StateObject private var content: SongCommentsContent
     @ObservedObject private var toasts = ToastCenter.shared
@@ -35,9 +32,8 @@ struct SongCommentsView: View {
     @State private var detent: PresentationDetent = .medium
     #endif
 
-    init(track: Track, onClose: (() -> Void)? = nil) {
+    init(track: Track) {
         self.track = track
-        self.onClose = onClose
         _content = StateObject(wrappedValue: SongCommentsContent(songID: track.id))
     }
 
@@ -98,7 +94,7 @@ struct SongCommentsView: View {
             }
             .frame(maxWidth: .infinity, alignment: .leading)
             Button {
-                if let onClose { onClose() } else { dismiss() }
+                dismiss()
             } label: {
                 Image(systemName: "xmark")
                     .font(.system(size: 12, weight: .semibold))

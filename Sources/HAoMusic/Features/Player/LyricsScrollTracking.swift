@@ -63,18 +63,6 @@ private struct LyricsScrollTracking: ViewModifier {
     }
 }
 
-/// Read by the tracking modifier itself, so scroll frames do not re-render
-/// the lyric column's entire row tree just to reset the idle timer.
-/// (Verbatim from Coda's LyricsScrollTracking.swift; the copied lyrics
-/// column reads it.)
-struct LyricsScrollOffset: PreferenceKey {
-    static let defaultValue: CGFloat? = nil
-
-    static func reduce(value: inout CGFloat?, nextValue: () -> CGFloat?) {
-        value = nextValue() ?? value
-    }
-}
-
 extension View {
     /// Tracks manual scrolling of a lyrics list; see `LyricsScrollTracking`.
     /// `onResume` runs once the hold after a manual scroll runs out.

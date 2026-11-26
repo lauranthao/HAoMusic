@@ -345,38 +345,6 @@
 		2688B7F201638381F76B8D89 = {isa = PBXBuildFile; fileRef = CDB7411F81D555A7C69BB71E; };
 		1A780D2B35EA4167DF71F5E3 = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsView.swift; sourceTree = "<group>"; };
 		F58CCB943EB4721E2E8D6AB0 = {isa = PBXBuildFile; fileRef = 1A780D2B35EA4167DF71F5E3; };
-		2FAC3D27669F47D99164FD31 = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NowPlayingPortraitArtwork.swift; sourceTree = "<group>"; };
-		3F07F402226747DBA7B18DAD = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NowPlayingFluidBackground.swift; sourceTree = "<group>"; };
-		5207C914E2764AD0807A4E7F = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NowPlayingTouchShield.swift; sourceTree = "<group>"; };
-		8403423130B0405FB698EC9B = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = IOSSystemVolumeSlider.swift; sourceTree = "<group>"; };
-		97C9B53D863C43E28C25A98C = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = IOSInlinePlaybackQueueView.swift; sourceTree = "<group>"; };
-		132D0CA508504CD88E66EF7B = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PlaybackDeviceButton.swift; sourceTree = "<group>"; };
-		A455BC9C26814D0B90222821 = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NowPlayingSplitGeometry.swift; sourceTree = "<group>"; };
-		0A9FA86444A34B3F842B1E6D = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppleMusicLyricsColumn.swift; sourceTree = "<group>"; };
-		EB7D132A074141F183593E83 = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LyricsScrollInterfaceVisibilityTracker.swift; sourceTree = "<group>"; };
-		EA1EE468FE1149E491824C86 = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NowPlayingAddToPlaylistColumn.swift; sourceTree = "<group>"; };
-		74571B7D3EAA47AAB9CD7E79 = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CodaPlayerControls.swift; sourceTree = "<group>"; };
-		322FAFBA29CF47609588D21D = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CoverRotation.swift; sourceTree = "<group>"; };
-		CE15F08DE1844FEE8FB3EB1C = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NowPlayingQualityControl.swift; sourceTree = "<group>"; };
-		F7538E71402E467383427553 = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PlaylistArtwork.swift; sourceTree = "<group>"; };
-		2C42B47E427C419182ADF700 = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LyricModels.swift; sourceTree = "<group>"; };
-		245D6CCC823F4CC08AC2417B = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PlayerSlider.swift; sourceTree = "<group>"; };
-		1A097014BD8D43C381F355F6 = {isa = PBXBuildFile; fileRef = 2FAC3D27669F47D99164FD31; };
-		0C08585C215D49F3B5B340AA = {isa = PBXBuildFile; fileRef = 3F07F402226747DBA7B18DAD; };
-		2239A8C4D8BC41DCAA24482B = {isa = PBXBuildFile; fileRef = 5207C914E2764AD0807A4E7F; };
-		1CA06B0AE087456886133887 = {isa = PBXBuildFile; fileRef = 8403423130B0405FB698EC9B; };
-		57388C1127004383B88612FC = {isa = PBXBuildFile; fileRef = 97C9B53D863C43E28C25A98C; };
-		F6B1E4AA64664EA2BA26A9BC = {isa = PBXBuildFile; fileRef = 132D0CA508504CD88E66EF7B; };
-		7DC513C100FD466793F06982 = {isa = PBXBuildFile; fileRef = A455BC9C26814D0B90222821; };
-		844E8B0429664E51AF84F048 = {isa = PBXBuildFile; fileRef = 0A9FA86444A34B3F842B1E6D; };
-		AB334FE767054C71B3EBA1B4 = {isa = PBXBuildFile; fileRef = EB7D132A074141F183593E83; };
-		E79B7C3C6D114DB380A21E78 = {isa = PBXBuildFile; fileRef = EA1EE468FE1149E491824C86; };
-		D8EF2D334FE747CCA3F30620 = {isa = PBXBuildFile; fileRef = 74571B7D3EAA47AAB9CD7E79; };
-		92C5B0E77B914F6C85E35186 = {isa = PBXBuildFile; fileRef = 322FAFBA29CF47609588D21D; };
-		24AEEA7D1B3C40CF90AC190C = {isa = PBXBuildFile; fileRef = CE15F08DE1844FEE8FB3EB1C; };
-		0C09B75B99EA445CB8947065 = {isa = PBXBuildFile; fileRef = F7538E71402E467383427553; };
-		BBC29C0BD0334F1490397AA1 = {isa = PBXBuildFile; fileRef = 2C42B47E427C419182ADF700; };
-		8B0B7506096041E3BCD82F29 = {isa = PBXBuildFile; fileRef = 245D6CCC823F4CC08AC2417B; };
 		7171AC70D7324A229FEF1D3F = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AboutView.swift; sourceTree = "<group>"; };
 		169514F1346740D8A107546C = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WallpaperSettingsView.swift; sourceTree = "<group>"; };
 		ED8C0BDCADAB49BE919BD98F = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WallpaperBackground.swift; sourceTree = "<group>"; };
@@ -708,7 +676,6 @@
 				219F3C36B1F195CAAC252322,
 				4C2C2DDFFEEC5990B3D28389,
 				A62EA2413F0583F9932B61DD,
-				2C42B47E427C419182ADF700,
 			);
 			name = Player;
 			path = Player;
@@ -870,19 +837,6 @@
 				28B807D548F8DFDC87303C95,
 				20015C46A494D52966C00DCA,
 				7F69E6FD18BEB22258A846B9,
-				2FAC3D27669F47D99164FD31,
-				3F07F402226747DBA7B18DAD,
-				5207C914E2764AD0807A4E7F,
-				8403423130B0405FB698EC9B,
-				97C9B53D863C43E28C25A98C,
-				132D0CA508504CD88E66EF7B,
-				A455BC9C26814D0B90222821,
-				0A9FA86444A34B3F842B1E6D,
-				EB7D132A074141F183593E83,
-				EA1EE468FE1149E491824C86,
-				74571B7D3EAA47AAB9CD7E79,
-				322FAFBA29CF47609588D21D,
-				CE15F08DE1844FEE8FB3EB1C,
 			);
 			name = Player;
 			path = Player;
@@ -907,7 +861,6 @@
 				48D4782733FB4E9D8D0E574F,
 				4260BABD44D1680908976BD9,
 				ED8C0BDCADAB49BE919BD98F,
-				F7538E71402E467383427553,
 			);
 			name = Shared;
 			path = Shared;
@@ -969,7 +922,6 @@
 				5BB66082856D723BB985CB59,
 				DC7590B1B5E285D8F2B62847,
 				C64B7156B23515011BEE1B8F,
-				245D6CCC823F4CC08AC2417B,
 			);
 			name = DesignSystem;
 			path = DesignSystem;
@@ -1269,22 +1221,6 @@
 				5CE4EB7A574B4BCEB3779C10,
 				2EB94AAD412345F7BA3C6B70,
 				5102B4C8A5474B9C9838E401,
-				1A097014BD8D43C381F355F6,
-				0C08585C215D49F3B5B340AA,
-				2239A8C4D8BC41DCAA24482B,
-				1CA06B0AE087456886133887,
-				57388C1127004383B88612FC,
-				F6B1E4AA64664EA2BA26A9BC,
-				7DC513C100FD466793F06982,
-				844E8B0429664E51AF84F048,
-				AB334FE767054C71B3EBA1B4,
-				E79B7C3C6D114DB380A21E78,
-				D8EF2D334FE747CCA3F30620,
-				92C5B0E77B914F6C85E35186,
-				24AEEA7D1B3C40CF90AC190C,
-				0C09B75B99EA445CB8947065,
-				BBC29C0BD0334F1490397AA1,
-				8B0B7506096041E3BCD82F29,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
