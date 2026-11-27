@@ -159,7 +159,7 @@ actor OfflineStore {
                 // Another job may already have finalized the same file
                 // (same unlock URL, different requested quality): keep its
                 // retention, or the first job's owner would lose the file.
-                if let existing = try db.record(id: finalized.id) {
+                if let existing = try db.record(id: finalized.identity.id) {
                     published.retainedBy.formUnion(existing.retainedBy)
                     if let played = existing.lastPlayed,
                        (published.lastPlayed ?? .distantPast) < played {
