@@ -31,7 +31,13 @@ final class LocalMusicStore: ObservableObject {
     struct ImportResult {
         var imported = 0
         var duplicates = 0
+        /// Rejected by extension. The extensions are reported so a failed
+        /// import says what it was, instead of a bare "unsupported".
         var unsupported = 0
+        var unsupportedExtensions: [String] = []
+        /// The file could not be copied or read (permissions, download,
+        /// duration). Kept apart from unsupported: a different problem.
+        var unreadable = 0
     }
 
     static let supportedExtensions: Set<String> = ["mp3", "flac", "m4a", "aac", "wav", "aiff"]
@@ -72,8 +78,13 @@ final class LocalMusicStore: ObservableObject {
         var seenMD5s = Set(entries.map(\.md5))
         var newEntries: [LocalMusicEntry] = []
         for url in urls {
-            guard Self.supportedExtensions.contains(url.pathExtension.lowercased()) else {
+            let ext = url.pathExtension.lowercased()
+            guard Self.supportedExtensions.contains(ext) else {
                 result.unsupported += 1
+                let shown = ext.isEmpty ? "无后缀" : ".\(ext)"
+                if !result.unsupportedExtensions.contains(shown) {
+                    result.unsupportedExtensions.append(shown)
+                }
                 continue
             }
             switch await Self.prepareImport(from: url, directory: directory, id: nextID,
@@ -86,7 +97,7 @@ final class LocalMusicStore: ObservableObject {
             case .duplicate:
                 result.duplicates += 1
             case .unsupported:
-                result.unsupported += 1
+                result.unreadable += 1
             }
         }
         if !newEntries.isEmpty {
