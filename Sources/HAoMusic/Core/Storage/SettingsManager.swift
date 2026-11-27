@@ -472,11 +472,8 @@ final class SettingsManager: ObservableObject {
             ?? (defaults.bool(forKey: Keys.showRomaji) ? .romaji : .off)
         verbatimLyrics = defaults.object(forKey: Keys.verbatimLyrics) as? Bool ?? true
         enableUnblock = defaults.object(forKey: Keys.unblock) as? Bool ?? true
-        if let rawSourceIDs = defaults.stringArray(forKey: Keys.unblockSources) {
-            enabledAudioSourceIDs = Set(rawSourceIDs.compactMap(AudioSourceID.init))
-        } else {
-            enabledAudioSourceIDs = Set(AudioSourceID.allCases)
-        }
+        // 音源全部常开，不再让用户关闭：旧版本存过的子集直接丢弃。
+        enabledAudioSourceIDs = Set(AudioSourceID.allCases)
         autoCheckUpdates = defaults.object(forKey: Keys.autoCheckUpdates) as? Bool ?? true
         showDesktopLyrics = defaults.object(forKey: Keys.desktopLyrics) as? Bool ?? false
         #if os(macOS)

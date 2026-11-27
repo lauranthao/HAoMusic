@@ -118,7 +118,7 @@ struct SettingsView: View {
                 .accessibilityIdentifier("settingsSoundEffectsButton")
                 #endif
                 Toggle("灰色歌曲解锁", isOn: $settings.enableUnblock)
-                Text("无版权或下架歌曲将从已启用音源中匹配播放")
+                Text("无版权或下架歌曲将自动从音源中匹配播放")
                     .font(.caption)
                     .foregroundStyle(.secondary)
             }
@@ -126,25 +126,6 @@ struct SettingsView: View {
 
             AutoMixSettingsSection()
             #endif
-
-            if settings.enableUnblock {
-                Section {
-                    ForEach(AudioSourceID.allCases, id: \.self) { source in
-                        Toggle(source.displayName, isOn: Binding(
-                            get: { settings.enabledAudioSourceIDs.contains(source) },
-                            set: { isEnabled in
-                                if isEnabled {
-                                    settings.enabledAudioSourceIDs.insert(source)
-                                } else {
-                                    settings.enabledAudioSourceIDs.remove(source)
-                                }
-                            }
-                        ))
-                    }
-                } header: {
-                    Text("音源")
-                }
-            }
 
             Section("外观") {
                 Picker("主题", selection: $settings.appearance) {
