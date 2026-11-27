@@ -54,6 +54,12 @@ struct Track: Codable, Hashable, Identifiable {
     let isCloud: Bool
     /// Some endpoints (cloudsearch, FM) embed the privilege in the track itself.
     let embeddedPrivilege: TrackPrivilege?
+    /// QQ 音乐 songmid / media_mid — set for tracks found by QQ search.
+    /// A QQ track has no NetEase id: its `id` is a stable negative hash
+    /// of the songmid (see `init(qqSong:)`), so it never collides with a
+    /// NetEase id or a local import's sequential negative id.
+    let qqMid: String?
+    let qqMediaMid: String?
 
     var artistNames: String { artists.map(\.name).joined(separator: " / ") }
     var duration: TimeInterval { TimeInterval(durationMS) / 1000 }
@@ -66,6 +72,7 @@ struct Track: Codable, Hashable, Identifiable {
         case dt, duration
         case alia, alias
         case tns, fee, mv, no, cd, noCopyrightRcmd, pc, privilege
+        case qqMid, qqMediaMid
     }
 
     init(from decoder: Decoder) throws {
@@ -90,6 +97,8 @@ struct Track: Codable, Hashable, Identifiable {
             && (try? c.decodeNil(forKey: .noCopyrightRcmd)) == false
         isCloud = c.contains(.pc) && (try? c.decodeNil(forKey: .pc)) == false
         embeddedPrivilege = try? c.decode(TrackPrivilege.self, forKey: .privilege)
+        qqMid = try? c.decodeIfPresent(String.self, forKey: .qqMid)
+        qqMediaMid = try? c.decodeIfPresent(String.self, forKey: .qqMediaMid)
     }
 
     /// A song imported from the user's own files. Negative ids never collide
@@ -110,6 +119,43 @@ struct Track: Codable, Hashable, Identifiable {
         self.noCopyright = false
         self.isCloud = false
         self.embeddedPrivilege = nil
+        self.qqMid = nil
+        self.qqMediaMid = nil
+    }
+
+    /// A track found by QQ search. QQ's numeric songid would collide with
+    /// NetEase ids, and a random id would break queue persistence across
+    /// launches, so the id is a stable negative hash of the songmid.
+    init(qqSong: ProviderSong) {
+        self.qqMid = qqSong.qqMid
+        self.qqMediaMid = qqSong.qqMediaMid
+        self.id = Self.qqTrackID(qqMid: qqSong.qqMid ?? "")
+        self.name = qqSong.name
+        self.artists = qqSong.artists.isEmpty ? [] : qqSong.artists
+            .components(separatedBy: " / ")
+            .map { ArtistRef(id: 0, name: $0) }
+        self.album = AlbumRef(id: 0, name: qqSong.album, picUrl: qqSong.coverURL?.absoluteString)
+        self.durationMS = Int(qqSong.duration * 1000)
+        self.alias = []
+        self.transNames = []
+        self.fee = qqSong.fee
+        self.mvID = 0
+        self.trackNo = 0
+        self.disc = nil
+        self.noCopyright = false
+        self.isCloud = false
+        self.embeddedPrivilege = nil
+    }
+
+    /// FNV-1a over the songmid bytes, folded into a negative id far below
+    /// the local-import range (-1, -2, ...).
+    private static func qqTrackID(qqMid: String) -> Int {
+        var hash: UInt64 = 0xcbf29ce484222325
+        for byte in qqMid.utf8 {
+            hash ^= UInt64(byte)
+            hash &*= 0x100000001b3
+        }
+        return -1_000_000 - Int(hash % 9_000_000_000_000_000)
     }
 
     func encode(to encoder: Encoder) throws {
@@ -128,6 +174,8 @@ struct Track: Codable, Hashable, Identifiable {
         if isCloud { try c.encode([String: String](), forKey: .pc) }
         if noCopyright { try c.encode([String: String](), forKey: .noCopyrightRcmd) }
         try c.encodeIfPresent(embeddedPrivilege, forKey: .privilege)
+        try c.encodeIfPresent(qqMid, forKey: .qqMid)
+        try c.encodeIfPresent(qqMediaMid, forKey: .qqMediaMid)
     }
 }
 

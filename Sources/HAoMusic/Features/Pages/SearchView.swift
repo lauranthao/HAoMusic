@@ -83,6 +83,46 @@ final class SearchViewModel: ObservableObject {
         playlists = []
     }
 
+    /// Songs from NetEase and QQ, searched in parallel and merged: a QQ
+    /// song that duplicates a NetEase result (same name + artist +
+    /// duration within 2 seconds) is dropped, NetEase wins. QQ is capped
+    /// at 5 seconds so a slow QQ never delays the NetEase results.
+    /// Either source failing alone still shows the other's results; nil
+    /// only when both fail, so the tab retries.
+    private static func mergedSongs(for query: String, limit: Int) async -> [Track]? {
+        async let neteaseTask = try? MusicAPI.search(query, type: .songs, limit: limit)
+        async let qqTask = qqSongs(for: query, limit: limit)
+        let (neteaseResult, qqTracks) = await (neteaseTask, qqTask)
+        let neteaseTracks = neteaseResult?.songs ?? []
+        guard neteaseResult != nil || !qqTracks.isEmpty else { return nil }
+        return neteaseTracks + qqTracks.filter { candidate in
+            !neteaseTracks.contains { existing in
+                existing.name.lowercased() == candidate.name.lowercased()
+                && existing.artistNames.lowercased() == candidate.artistNames.lowercased()
+                && abs(existing.durationMS - candidate.durationMS) <= 2000
+            }
+        }
+    }
+
+    private static func qqSongs(for query: String, limit: Int) async -> [Track] {
+        await withTaskGroup(of: [Track].self) { group in
+            group.addTask {
+                guard let songs = try? await QQMusicAPI.shared.searchSongs(keyword: query, limit: limit) else { return [] }
+                return songs.compactMap { song -> Track? in
+                    guard let mid = song.qqMid, !mid.isEmpty else { return nil }
+                    return Track(qqSong: song)
+                }
+            }
+            group.addTask {
+                try? await Task.sleep(nanoseconds: 5_000_000_000)
+                return []
+            }
+            let first = await group.next() ?? []
+            group.cancelAll()
+            return first
+        }
+    }
+
     func load(tab: Tab) async {
         let trimmed = query.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else { return }
@@ -98,14 +138,14 @@ final class SearchViewModel: ObservableObject {
         // instead of keeping an empty result for this query.
         switch tab {
         case .all:
-            async let songsTask = try? MusicAPI.search(trimmed, type: .songs, limit: 12)
+            async let songsTask = mergedSongs(for: trimmed, limit: 12)
             async let artistsTask = try? MusicAPI.search(trimmed, type: .artists, limit: 10)
             async let albumsTask = try? MusicAPI.search(trimmed, type: .albums, limit: 10)
             async let playlistsTask = try? MusicAPI.search(trimmed, type: .playlists, limit: 10)
             let (songResult, artistResult, albumResult, playlistResult) =
                 await (songsTask, artistsTask, albumsTask, playlistsTask)
             guard generation == requestGeneration else { return }
-            songs = songResult?.songs ?? []
+            songs = songResult ?? []
             artists = artistResult?.artists ?? []
             albums = albumResult?.albums ?? []
             playlists = playlistResult?.playlists ?? []
@@ -113,9 +153,9 @@ final class SearchViewModel: ObservableObject {
                 loadedTabs.remove(tab)
             }
         case .songs:
-            let result = try? await MusicAPI.search(trimmed, type: .songs, limit: 100)
+            let merged = await mergedSongs(for: trimmed, limit: 100)
             guard generation == requestGeneration else { return }
-            if let result { songs = result.songs ?? songs } else { loadedTabs.remove(tab) }
+            if let merged { songs = merged } else { loadedTabs.remove(tab) }
         case .artists:
             let result = try? await MusicAPI.search(trimmed, type: .artists, limit: 50)
             guard generation == requestGeneration else { return }

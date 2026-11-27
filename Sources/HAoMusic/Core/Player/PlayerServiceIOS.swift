@@ -826,6 +826,20 @@ final class PlayerService: ObservableObject {
             return
         }
 
+        // A QQ search result plays straight from QQ (vkey flow) — it has
+        // no NetEase id to resolve, so the request below would be wasted.
+        // If vkey refuses (a VIP-only song over anonymous auth), fall
+        // through to the normal chain, which may still find the song on
+        // another source.
+        if let qqMid = track.qqMid, !qqMid.isEmpty,
+           let urlString = try? await QQMusicAPI.shared.songURL(songmid: qqMid, mediaMid: track.qqMediaMid),
+           let url = URL(string: urlString) {
+            unblockSource = String(localized: "QQ 音乐")
+            _ = await installResolvedAsset(AVURLAsset(url: url), for: track, generation: generation,
+                                           durationMS: track.durationMS > 0 ? track.durationMS : nil, resumeAt: resumeAt)
+            return
+        }
+
         var data: SongURLData?
         do {
             data = try await MusicAPI.songURLRetrying(ids: [track.id], level: quality).first
@@ -1304,6 +1318,23 @@ final class PlayerService: ObservableObject {
             updateLyricsCursor(at: progress)
         }
         guard !usesOfflineQueue else { return }
+        // A QQ search result has no NetEase lyrics page; fetch QQ's own.
+        if let qqMid = track.qqMid, !qqMid.isEmpty {
+            guard let qqLyrics = try? await QQMusicAPI.shared.lyric(songmid: qqMid),
+                  let original = qqLyrics.original, !original.isEmpty else { return }
+            guard generation == resolveGeneration else { return }
+            let response = LyricResponse(
+                lrc: .init(lyric: original),
+                tlyric: qqLyrics.translation.map { LyricResponse.LyricBody(lyric: $0) },
+                romalrc: nil, yrc: nil, ytlrc: nil, yromalrc: nil,
+                lyricUser: nil, transUser: nil, nolyric: nil, uncollected: nil)
+            lyrics = LyricsParser.parse(response)
+            updateLyricsCursor(at: progress)
+            if let scope, SettingsManager.shared.enableAudioCache || DownloadManager.shared.isDownloaded(trackID: track.id) {
+                await OfflineMetadataStore.shared.keepPlaybackData(track: track, lyrics: response, scope: scope)
+            }
+            return
+        }
         let response = try? await MusicAPI.lyric(id: track.id)
         guard generation == resolveGeneration, let response else { return }
         lyrics = LyricsParser.parse(response)
