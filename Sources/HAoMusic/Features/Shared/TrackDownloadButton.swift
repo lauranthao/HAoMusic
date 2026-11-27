@@ -6,9 +6,7 @@ struct TrackDownloadButton: View {
     var isVisible = true
 
     @ObservedObject private var state: TrackDownloadState
-    @EnvironmentObject private var account: AccountStore
     @EnvironmentObject private var settings: SettingsManager
-    @Environment(\.openLogin) private var openLogin
     @FocusState private var isFocused: Bool
     @State private var isSubmitting = false
     @State private var confirmRemoval = false
@@ -79,7 +77,8 @@ struct TrackDownloadButton: View {
             confirmRemoval = true
             return
         }
-        guard account.isLoggedIn else { openLogin(); return }
+        // No login gate: downloads work for guests too (the manager's
+        // "guest" scope), same as the bulk download button.
         let jobID = state.jobID
         if isActive, let jobID { submit { await downloads.cancel(jobID) }; return }
         MeteredDownloadCenter.shared.request(bulk: false, count: 1, network: downloads.network) { metered in

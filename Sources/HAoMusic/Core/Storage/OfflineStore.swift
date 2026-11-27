@@ -15,11 +15,11 @@ actor OfflineStore {
     private var leases: [UUID: String] = [:]
     private var validating: Set<String> = []
     private var downloadReservations: [String: Int64] = [:]
-    private let validateAudio: @Sendable (URL, OfflineAudioDescriptor) async throws -> Void
+    private let validateAudio: @Sendable (URL, OfflineAudioDescriptor) async throws -> String
     private let freeSpace: @Sendable (URL) throws -> Int64
 
     init(directory: URL, minimumFreeBytes: Int64? = nil,
-         validateAudio: @escaping @Sendable (URL, OfflineAudioDescriptor) async throws -> Void = { url, descriptor in
+         validateAudio: @escaping @Sendable (URL, OfflineAudioDescriptor) async throws -> String = { url, descriptor in
              try await Task.detached(priority: .utility) { try OfflineAudioValidator.validate(url: url, descriptor: descriptor) }.value
          },
          freeSpace: @escaping @Sendable (URL) throws -> Int64 = { url in
@@ -88,8 +88,10 @@ actor OfflineStore {
         let rank = AudioQuality.allCases.map(\.rawValue)
         guard let requested = rank.firstIndex(of: quality) else { return nil }
         for record in try db.records(scope: accountScope, trackID: trackID) where record.state == .complete {
-            guard record.descriptor.identity.source == Upstream.tag,
-                  (rank.firstIndex(of: record.descriptor.identity.quality) ?? -1) >= requested else { continue }
+            // No source filter: a QQ/unlock download is a real file too, and
+            // its quality is labelled conservatively, so the rank check
+            // below still prefers a NetEase copy at a higher tier.
+            guard (rank.firstIndex(of: record.descriptor.identity.quality) ?? -1) >= requested else { continue }
             if var available = try availableRecord(record, database: db) {
                 if let owner { available.retainedBy.insert(owner); try db.save(available) }
                 return available.descriptor
@@ -100,7 +102,11 @@ actor OfflineStore {
 
     /// Background URLSession already owns a whole temporary file. Move it onto
     /// this volume, verify it, then publish it.
-    func importDownload(at url: URL, descriptor: OfflineAudioDescriptor) async throws {
+    /// Imports a finished transfer. Returns the descriptor the record was
+    /// stored under: a provisional descriptor (QQ/unlock URL, no checksum
+    /// from its source) is finalized while verifying (see `verify`), so the
+    /// caller must retain the returned descriptor, not the provisional one.
+    func importDownload(at url: URL, descriptor: OfflineAudioDescriptor) async throws -> OfflineAudioDescriptor {
         try descriptor.validate()
         let db = try preparedDatabase()
         let id = descriptor.identity.id
@@ -113,7 +119,7 @@ actor OfflineStore {
             // Removed while it plays: the file goes when playback lets go of it,
             // and this copy has to wait for that.
             guard existing.state != .deleting else { throw OfflineAudioError.busy }
-            if existing.state == .complete { return }
+            if existing.state == .complete { return existing.descriptor }
             record = existing
         } else {
             record = OfflineAudioRecord(descriptor: descriptor)
@@ -128,25 +134,58 @@ actor OfflineStore {
         try FileManager.default.moveItem(at: url, to: stagingURL(record))
         record.state = .verifying
         try db.save(record)
-        try await verify(record, database: db)
+        return try await verify(record, database: db)
     }
 
-    private func verify(_ candidate: OfflineAudioRecord, database db: OfflineAudioDatabase) async throws {
+    /// Verifies a staged download and publishes it. Returns the descriptor
+    /// the record was stored under (a provisional descriptor is finalized
+    /// with the checksum computed while verifying, which re-keys the
+    /// record — the old provisional row is removed).
+    private func verify(_ candidate: OfflineAudioRecord, database db: OfflineAudioDatabase) async throws -> OfflineAudioDescriptor {
         var record = candidate
         let id = record.id
         validating.insert(id)
         defer { validating.remove(id) }
         let staging = stagingURL(record)
         do {
-            try await validateAudio(staging, record.descriptor)
+            let checksum = try await validateAudio(staging, record.descriptor)
             // Removal while verifying wins: the file is deleted, not published.
             guard let current = try db.record(id: id), current.state == .verifying else { throw CancellationError() }
+            if record.descriptor.identity.md5Provisional {
+                let finalized = record.descriptor.finalized(checksum: checksum)
+                var published = OfflineAudioRecord(descriptor: finalized)
+                published.retainedBy = current.retainedBy
+                published.lastPlayed = current.lastPlayed
+                // Another job may already have finalized the same file
+                // (same unlock URL, different requested quality): keep its
+                // retention, or the first job's owner would lose the file.
+                if let existing = try db.record(id: finalized.id) {
+                    published.retainedBy.formUnion(existing.retainedBy)
+                    if let played = existing.lastPlayed,
+                       (published.lastPlayed ?? .distantPast) < played {
+                        published.lastPlayed = played
+                    }
+                }
+                // Re-key the row first, while the file is still staged: a
+                // failure below leaves a .verifying row (recovered on next
+                // launch), never a .complete row without a file or a file
+                // without a row.
+                try db.remove(id: id)
+                try db.save(published)
+                try FileManager.default.moveItem(at: staging, to: audioURL(published))
+                try protect(audioURL(published))
+                published.state = .complete
+                published.verifiedModificationDate = try audioURL(published).resourceValues(forKeys: [.contentModificationDateKey]).contentModificationDate
+                try db.save(published)
+                return finalized
+            }
             record = current
             try FileManager.default.moveItem(at: staging, to: audioURL(record))
             try protect(audioURL(record))
             record.state = .complete
             record.verifiedModificationDate = try audioURL(record).resourceValues(forKeys: [.contentModificationDateKey]).contentModificationDate
             try db.save(record)
+            return record.descriptor
         } catch {
             try removeFiles(record)
             guard let current = try db.record(id: id) else { throw error }
@@ -192,7 +231,10 @@ actor OfflineStore {
 
     private func playbackRecords(accountScope: String, trackID: Int, preferredQuality: String) throws -> [OfflineAudioRecord] {
         try preparedDatabase().records(scope: accountScope, trackID: trackID)
-            .filter { $0.state == .complete && $0.descriptor.identity.source == Upstream.tag }
+            // No source filter: a QQ/unlock download is a real file, and its
+            // quality is labelled conservatively, so the sort below still
+            // prefers a NetEase copy at the requested (or a higher) tier.
+            .filter { $0.state == .complete }
             .sorted {
                 let qualities = AudioQuality.allCases.map(\.rawValue)
                 let lhs = $0.descriptor.identity.quality, rhs = $1.descriptor.identity.quality

@@ -668,10 +668,159 @@ enum MusicAPI {
     /// Download eligibility is resolved independently of the playback URL.
     /// An injectable client lets the compatibility probe use an isolated cookie
     /// jar without reading or changing the listener's current login.
+    /// LEGACY: the default download resolver is `songPlaybackDownloadResource`
+    /// below — the official download endpoint refuses VIP songs (non-200 or
+    /// a trial clip) that the player endpoint serves, so a song you can play
+    /// could not be downloaded. Kept for the compatibility probe only.
     static func songDownloadResource(track: Track, level: String, accountScope: String,
                                      client: MusicClient = .shared) async throws -> OfflineAudioResource {
         let data = try await songDownloadURL(id: track.id, level: level, client: client)
         return try downloadResource(data: data, track: track, accountScope: accountScope)
+    }
+
+    /// Downloads resolve through the *playback* chain, not the official
+    /// download endpoint. Order mirrors playback — QQ vkey, NetEase at the
+    /// requested tier then standard, then the unlock race with the same
+    /// sources and timeouts — and the first full-length, non-stream URL
+    /// wins. Quality is labelled with the tier that actually served the
+    /// file, never the tier that was asked for. Only three cases cannot
+    /// download: no source has an address (all grey), the address is an
+    /// HLS playlist, or the only address is a trial clip.
+    static func songPlaybackDownloadResource(track: Track, level: String, accountScope: String,
+                                            client: MusicClient = .shared) async throws -> OfflineAudioResource {
+        try Task.checkCancellation()
+        // A QQ search result plays straight from QQ (vkey flow) — same as
+        // playback. vkey reports the bitrate it actually served, which is
+        // the honest quality label; it reports no checksum or size, so the
+        // resource is provisional until verification (see below).
+        if let qqMid = track.qqMid, !qqMid.isEmpty {
+            do {
+                if let result = try await QQMusicAPI.shared.songURLResult(
+                    songmid: qqMid, mediaMid: track.qqMediaMid,
+                    quality: ProviderAudioQuality(rawValue: level) ?? .current),
+                   let url = URL(string: result.url), !isStreamURL(url) {
+                    return try await provisionalDownloadResource(
+                        url: url, track: track, source: String(localized: "QQ 音乐"),
+                        quality: result.quality?.rawValue ?? AudioQuality.standard.rawValue,
+                        accountScope: accountScope)
+                }
+            } catch {
+                if error is CancellationError { throw error }
+                // vkey refused: fall through to NetEase / unlock.
+            }
+        }
+        // NetEase at the requested tier, then standard — same as playback.
+        // The player endpoint returns the same SongURLData the download
+        // endpoint would, including md5/size, so the existing resource
+        // builder (and its checks) applies unchanged.
+        var connectivityError: Error?
+        if track.id > 0 {
+            var tiers = [level]
+            if level != AudioQuality.standard.rawValue { tiers.append(AudioQuality.standard.rawValue) }
+            for tier in tiers {
+                do {
+                    guard let data = try await songURLRetrying(ids: [track.id], level: tier, using: client).first else { continue }
+                    return try downloadResource(data: data, track: track, accountScope: accountScope)
+                } catch {
+                    if error is CancellationError { throw error }
+                    if ConnectivityFailure.matches(error) { connectivityError = error }
+                    continue
+                }
+            }
+        }
+        // The service refused, or offers only a trial: the unlock race.
+        // A dead network must leave the job waiting for the network, not
+        // failed as "unavailable" — the manager only retries the former —
+        // so skip the race and report the connectivity error instead.
+        if let connectivityError { throw connectivityError }
+        let enabledSources = await MainActor.run { SettingsManager.shared.enabledAudioSourceIDs }
+        if !enabledSources.isEmpty {
+            do {
+                return try await unlockDownloadResource(track: track, enabledSources: enabledSources, accountScope: accountScope)
+            } catch {
+                if error is CancellationError { throw error }
+                // No address from any unlock source.
+            }
+        }
+        throw OfflineAudioError.unavailable
+    }
+
+    /// One unlock winner, as a downloadable resource. Unlock sources report
+    /// no checksum, size or quality, so the resource is provisional: the
+    /// file's size comes from a HEAD probe and its checksum is computed
+    /// while verifying. Quality is the conservative "standard" floor — the
+    /// source does not say what it served, so nothing above standard is
+    /// ever claimed (a FLAC file is relabelled lossless when finalized).
+    private static func unlockDownloadResource(track: Track, enabledSources: Set<AudioSourceID>,
+                                               accountScope: String) async throws -> OfflineAudioResource {
+        let resolution = await UnblockService.resolve(track, enabledSources: enabledSources, excluding: [])
+        guard let source = resolution.source, !isStreamURL(source.url) else { throw OfflineAudioError.unavailable }
+        return try await provisionalDownloadResource(url: source.url, track: track, source: source.displayName,
+                                                     quality: AudioQuality.standard.rawValue, accountScope: accountScope)
+    }
+
+    /// A resource for a bare playback URL (QQ vkey / unlock): no checksum
+    /// or size from the source, so the size is probed up front and the
+    /// checksum is a stable placeholder until verification replaces it
+    /// with the file's real one. The signed URL is used immediately —
+    /// the caller (DownloadManager) starts the transfer right after
+    /// resolving — and a trial or stream URL never reaches this point.
+    private static func provisionalDownloadResource(url: URL, track: Track, source: String, quality: String,
+                                                    accountScope: String) async throws -> OfflineAudioResource {
+        guard track.duration > 0 else { throw OfflineAudioError.unavailable }
+        guard var components = URLComponents(url: url, resolvingAgainstBaseURL: false) else { throw OfflineAudioError.invalidResource }
+        components.scheme = "https"
+        guard let secureURL = components.url, !isStreamURL(secureURL) else { throw OfflineAudioError.unavailable }
+        let (byteCount, mimeType) = try await probeAudioURL(secureURL)
+        guard let format = OfflineAudioFormat(url: secureURL, mimeType: mimeType),
+              format.accepts(mimeType: mimeType) else { throw OfflineAudioError.unavailable }
+        let identity = OfflineAudioIdentity(accountScope: accountScope, trackID: track.id, source: source,
+                                            quality: quality, format: format,
+                                            contentMD5: OfflineAudioIdentity.provisionalMD5(for: secureURL),
+                                            md5Provisional: true)
+        let descriptor = OfflineAudioDescriptor(identity: identity, byteCount: byteCount, duration: track.duration)
+        try descriptor.validate()
+        return OfflineAudioResource(descriptor: descriptor, url: secureURL)
+    }
+
+    /// HLS playlists have no single file to save.
+    private static func isStreamURL(_ url: URL) -> Bool {
+        url.pathExtension.lowercased() == "m3u8"
+            || url.absoluteString.lowercased().contains(".m3u8")
+    }
+
+    /// Size (+ MIME type) of a direct audio URL without downloading it:
+    /// HEAD first, then a one-byte ranged GET for servers that refuse HEAD.
+    /// A URL that will not report its size cannot be reserved for or
+    /// verified, so it cannot download.
+    private static func probeAudioURL(_ url: URL) async throws -> (byteCount: Int64, mimeType: String?) {
+        var head = URLRequest(url: url)
+        head.httpMethod = "HEAD"
+        head.timeoutInterval = 10
+        if let probed = try? await probeAudioResponse(head) { return probed }
+        var range = URLRequest(url: url)
+        range.httpMethod = "GET"
+        range.setValue("bytes=0-0", forHTTPHeaderField: "Range")
+        range.timeoutInterval = 10
+        return try await probeAudioResponse(range)
+    }
+
+    private static func probeAudioResponse(_ request: URLRequest) async throws -> (byteCount: Int64, mimeType: String?) {
+        let (_, response) = try await URLSession.shared.data(for: request)
+        guard let http = response as? HTTPURLResponse, (200..<300).contains(http.statusCode) else {
+            throw OfflineAudioError.unavailable
+        }
+        let mimeType = http.mimeType
+        // A 206 response reports the *range* length, not the file: the
+        // total lives in Content-Range ("bytes 0-0/<total>").
+        if http.statusCode == 206,
+           let contentRange = http.value(forHTTPHeaderField: "Content-Range"),
+           let total = contentRange.split(separator: "/").last,
+           let byteCount = Int64(total), byteCount > 0 {
+            return (byteCount, mimeType)
+        }
+        guard http.expectedContentLength > 0 else { throw OfflineAudioError.unavailable }
+        return (http.expectedContentLength, mimeType)
     }
 
     static func songDownloadURL(id: Int, level: String, client: MusicClient = .shared) async throws -> SongURLData {

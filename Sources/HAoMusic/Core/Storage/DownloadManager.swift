@@ -163,7 +163,7 @@ final class DownloadManager: ObservableObject {
 
     init(store: OfflineStore, metadata: OfflineMetadataStore, persistence: DownloadCatalogStore,
          transport: any DownloadTransport, accountScope: String?,
-         resolver: @escaping Resolver = { try await MusicAPI.songDownloadResource(track: $0, level: $1, accountScope: $2) },
+         resolver: @escaping Resolver = { try await MusicAPI.songPlaybackDownloadResource(track: $0, level: $1, accountScope: $2) },
          metadataFetcher: MetadataFetcher? = nil,
          metadataReader: ((Int, String) async -> Track?)? = nil,
          cachedTracks: @escaping () async -> Set<Int> = { await DownloadManager.platformCachedTrackIDs() },
@@ -762,9 +762,12 @@ final class DownloadManager: ObservableObject {
             try? await persist()
             guard current(job) else { transport.acknowledge(receipt); return }
             do {
-                try await store.importDownload(at: transport.inbox.appendingPathComponent(receipt.fileName), descriptor: descriptor)
-                if current(job) { await complete(job: job, descriptor: descriptor) }
-                else { try? await store.remove(id: descriptor.identity.id) }
+                // The stored descriptor may differ from the resolved one: a
+                // provisional (QQ/unlock) descriptor is finalized while
+                // verifying, and the job must retain the finalized form.
+                let storedDescriptor = try await store.importDownload(at: transport.inbox.appendingPathComponent(receipt.fileName), descriptor: descriptor)
+                if current(job) { await complete(job: job, descriptor: storedDescriptor) }
+                else { try? await store.remove(id: storedDescriptor.identity.id) }
             } catch { await fail(job: job, error: error) }
             transport.acknowledge(receipt)
             await store.releaseDownloadReservation(token: receipt.token)

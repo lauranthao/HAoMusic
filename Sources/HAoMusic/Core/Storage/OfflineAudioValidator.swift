@@ -5,7 +5,10 @@ import Foundation
 enum OfflineAudioValidator {
     /// Read both encoded bytes and decoded frames. An HTTP 200 or a playable
     /// header is insufficient evidence that the complete song arrived.
-    static func validate(url: URL, descriptor: OfflineAudioDescriptor) throws {
+    /// Returns the file's MD5, so a provisional descriptor (no checksum from
+    /// its source) can be finalized with the real one after verification.
+    @discardableResult
+    static func validate(url: URL, descriptor: OfflineAudioDescriptor) throws -> String {
         let size = try url.resourceValues(forKeys: [.fileSizeKey]).fileSize
         guard size.map(Int64.init) == descriptor.byteCount else { throw OfflineAudioError.incomplete }
         let file = try FileHandle(forReadingFrom: url)
@@ -13,7 +16,12 @@ enum OfflineAudioValidator {
         var digest = Insecure.MD5()
         while let data = try file.read(upToCount: 256 * 1024), !data.isEmpty { digest.update(data: data) }
         let checksum = digest.finalize().map { String(format: "%02x", $0) }.joined()
-        guard checksum == descriptor.identity.contentMD5.lowercased() else { throw OfflineAudioError.checksumMismatch }
+        // A provisional descriptor carries the MD5 of its URL, not of the
+        // file: size + a full decode + the duration below are the proof,
+        // and the caller finalizes the descriptor with this checksum.
+        if !descriptor.identity.md5Provisional {
+            guard checksum == descriptor.identity.contentMD5.lowercased() else { throw OfflineAudioError.checksumMismatch }
+        }
         do {
             let audio = try AVAudioFile(forReading: url)
             guard let buffer = AVAudioPCMBuffer(pcmFormat: audio.processingFormat, frameCapacity: 16_384),
@@ -30,5 +38,6 @@ enum OfflineAudioValidator {
                 throw OfflineAudioError.invalidAudio
             }
         } catch { throw OfflineAudioError.invalidAudio }
+        return checksum
     }
 }

@@ -367,9 +367,7 @@ struct TrackDownloadActions: View {
     let track: Track
     var showsIcons = false
     @ObservedObject private var downloads = DownloadManager.shared
-    @EnvironmentObject private var account: AccountStore
     @EnvironmentObject private var settings: SettingsManager
-    @Environment(\.openLogin) private var openLogin
 
     private var job: DownloadJob? { downloads.jobsByTrackID[track.id] }
 
@@ -405,7 +403,8 @@ struct TrackDownloadActions: View {
     }
 
     private func enqueue() {
-        guard account.isLoggedIn else { openLogin(); return }
+        // No login gate: downloads work for guests too (the manager's
+        // "guest" scope).
         MeteredDownloadCenter.shared.request(bulk: false, count: 1, network: downloads.network) { metered in
             Task { await downloads.enqueue(track: track, quality: settings.audioQuality.rawValue, allowsMetered: metered) }
         }
@@ -423,9 +422,7 @@ struct DownloadCollectionButton: View {
     var menuPresentation = false
     @ObservedObject private var downloads = DownloadManager.shared
     @ObservedObject private var progress = DownloadManager.shared.progress
-    @EnvironmentObject private var account: AccountStore
     @EnvironmentObject private var settings: SettingsManager
-    @Environment(\.openLogin) private var openLogin
     @Environment(\.openDestination) private var openDestination
     @State private var isSubmitting = false
     @State private var confirmRemoval = false
@@ -541,7 +538,8 @@ struct DownloadCollectionButton: View {
     private func activate() {
         guard !isSubmitting, !isRemoving else { return }
         if !isActive && !canResume && isComplete { requestRemoval(); return }
-        guard account.isLoggedIn else { openLogin(); return }
+        // No login gate: downloads work for guests too (the manager's
+        // "guest" scope).
         if isActive {
             isSubmitting = true
             Task { [scope = downloads.accountScope] in

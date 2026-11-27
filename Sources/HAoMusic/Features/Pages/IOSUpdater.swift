@@ -40,9 +40,8 @@ final class IOSUpdater: NSObject, ObservableObject {
         if interactive { showSheet = true }
         Task {
             do {
-                let latest = try await ReleaseChecker.latest()
-                if ReleaseChecker.isNewer(latest.version, than: ReleaseChecker.currentVersion) {
-                    phase = .available(latest)
+                if let release = try await ReleaseChecker.checkForUpdate() {
+                    phase = .available(release)
                     showSheet = true
                 } else {
                     phase = .upToDate
@@ -94,7 +93,8 @@ final class IOSUpdater: NSObject, ObservableObject {
             openReleasePage(release)
             return
         }
-        pendingDownloadFilename = "HAoMusic-\(release.version).ipa"
+        pendingDownloadFilename = release.build.map { "HAoMusic-\(release.version)-build\($0).ipa" }
+            ?? "HAoMusic-\(release.version).ipa"
         phase = .downloading(0)
         Task {
             do {
@@ -211,8 +211,8 @@ struct IOSUpdaterSheet: View {
                 Image(systemName: "arrow.down.circle.fill")
                     .font(.system(size: 44)).foregroundStyle(Theme.accent)
                 VStack(spacing: 4) {
-                    Text("发现新版本 \(release.version)").font(.headline)
-                    Text("当前版本 \(ReleaseChecker.currentVersion)")
+                    Text("发现新版本 \(release.displayVersion)").font(.headline)
+                    Text("当前版本 \(ReleaseChecker.currentVersion)（build \(ReleaseChecker.currentBuild)）")
                         .font(.caption).foregroundStyle(.secondary)
                 }
                 Text("已装 TrollStore（巨魔）将自动安装；否则用「下载 IPA」手动侧载")
