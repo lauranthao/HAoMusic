@@ -412,21 +412,16 @@ struct HomeView: View {
                 VStack(alignment: .leading, spacing: Theme.Layout.sectionHeaderSpacing) {
                     SectionHeader(title: "新碟上架")
                         .padding(.horizontal, Theme.Layout.contentInset)
-                    ScrollView(.horizontal, showsIndicators: false) {
-                        LazyHStack(alignment: .top, spacing: 16) {
-                            ForEach(0..<(model.newAlbums.count + 1) / 2, id: \.self) { column in
-                                VStack(alignment: .leading, spacing: 16) {
-                                    albumCard(model.newAlbums[column * 2], size: size)
-                                    if column * 2 + 1 < model.newAlbums.count {
-                                        albumCard(model.newAlbums[column * 2 + 1], size: size)
-                                    }
+                    SectionShelfScroll(rowHeight: twoRowHeight) {
+                        ForEach(0..<(model.newAlbums.count + 1) / 2, id: \.self) { column in
+                            VStack(alignment: .leading, spacing: 16) {
+                                albumCard(model.newAlbums[column * 2], size: size)
+                                if column * 2 + 1 < model.newAlbums.count {
+                                    albumCard(model.newAlbums[column * 2 + 1], size: size)
                                 }
                             }
                         }
-                        .padding(.horizontal, Theme.Layout.contentInset)
-                        .frame(height: twoRowHeight)
                     }
-                    .shelfEdgeClip()
                     .background(
                         GeometryReader { proxy in
                             Color.clear.preference(key: NewAlbumsWidthKey.self, value: proxy.size.width)
@@ -592,16 +587,12 @@ struct HomeView: View {
             .map { Array(tracks[$0..<min($0 + rowsPerColumn, tracks.count)]) }
         let width = songShelfWidth > 0 ? songShelfWidth : UIScreen.main.bounds.width
         let columnWidth = max(240, (width - Theme.Layout.contentInset * 2) * 0.86)
-        return ScrollView(.horizontal, showsIndicators: false) {
-            LazyHStack(alignment: .top, spacing: 16) {
-                ForEach(columns.indices, id: \.self) { index in
-                    TrackListView(tracks: columns[index], style: .compact, source: .none)
-                        .frame(width: columnWidth)
-                }
+        return SectionShelfScroll(edgeInset: Theme.Layout.trackListInset) {
+            ForEach(columns.indices, id: \.self) { index in
+                TrackListView(tracks: columns[index], style: .compact, source: .none)
+                    .frame(width: columnWidth)
             }
-            .padding(.horizontal, Theme.Layout.contentInset)
         }
-        .shelfEdgeClip()
         .background(
             GeometryReader { proxy in
                 Color.clear.preference(key: SongShelfWidthKey.self, value: proxy.size.width)
@@ -618,10 +609,6 @@ struct HomeView: View {
                 openDestination(.trending(model.trendingSongs))
             }
             .padding(.horizontal, Theme.Layout.contentInset)
-            Rectangle()
-                .fill(Color.primary.opacity(0.08))
-                .frame(height: 0.5)
-                .padding(.horizontal, Theme.Layout.contentInset)
             songColumnShelf(tracks: Array(model.trendingSongs.prefix(30)), rowsPerColumn: 3)
         }
     }
@@ -645,6 +632,7 @@ struct HomeView: View {
                 }
                 .padding(.vertical, 2)
             }
+            .compatScrollClipDisabled()
             .shelfEdgeClip()
             if model.regionalLoading && model.regionalSongs.isEmpty {
                 HStack {
@@ -852,40 +840,42 @@ struct HomeToplistsSection: View {
             .padding(.horizontal, Theme.Layout.contentInset)
 
             GeometryReader { geometry in
-                let available = geometry.size.width - 2 * Theme.Layout.contentInset
+                // Same column geometry as the song shelves: the track is
+                // inset by trackListInset, so the chart artwork lands on
+                // the contentInset line like the cover cards.
+                let available = geometry.size.width - 2 * Theme.Layout.trackListInset
                 #if os(iOS)
                 let peek: CGFloat = UIDevice.current.userInterfaceIdiom == .phone && model.toplists.count > 1 ? 20 : 0
                 #else
                 let peek: CGFloat = 0
                 #endif
                 let width = max(1, min(357, available - peek))
-                ScrollView(.horizontal, showsIndicators: false) {
-                    LazyHStack(alignment: .top, spacing: 16) {
-                        ForEach(model.toplists) { chart in
-                            HomeToplistPreview(
-                                chart: chart,
-                                rowHeight: chartRowHeight,
-                                reservedHeight: toplistHeight,
-                                tracks: model.toplistTracks[chart.id],
-                                previousRanks: model.toplistPreviousRanks[chart.id] ?? [:],
-                                growthRatios: model.toplistGrowthRatios[chart.id] ?? [:],
-                                failed: model.failedToplistIDs.contains(chart.id),
-                                onRetry: { Task { await model.retryToplistTracks(id: chart.id) } },
-                                onOpen: { openDestination(.playlist(chart.id)) },
-                                onPlay: { track, tracks in
-                                    player.play(tracks: tracks, source: .playlist(chart.id), startAt: track,
-                                                context: .playlist(id: chart.id, name: chart.name))
-                                }
-                            )
-                            .equatable()
-                            .frame(width: width)
-                            .task { await model.loadToplistTracks(id: chart.id) }
-                        }
+                SectionShelfScroll(edgeInset: Theme.Layout.trackListInset) {
+                    ForEach(model.toplists) { chart in
+                        HomeToplistPreview(
+                            chart: chart,
+                            rowHeight: chartRowHeight,
+                            reservedHeight: toplistHeight,
+                            tracks: model.toplistTracks[chart.id],
+                            previousRanks: model.toplistPreviousRanks[chart.id] ?? [:],
+                            growthRatios: model.toplistGrowthRatios[chart.id] ?? [:],
+                            failed: model.failedToplistIDs.contains(chart.id),
+                            onRetry: { Task { await model.retryToplistTracks(id: chart.id) } },
+                            onOpen: { openDestination(.playlist(chart.id)) },
+                            onPlay: { track, tracks in
+                                player.play(tracks: tracks, source: .playlist(chart.id), startAt: track,
+                                            context: .playlist(id: chart.id, name: chart.name))
+                            }
+                        )
+                        .equatable()
+                        .frame(width: width)
+                        .task { await model.loadToplistTracks(id: chart.id) }
                     }
-                    .padding(.horizontal, Theme.Layout.contentInset)
                 }
             }
-            .frame(height: model.toplists.isEmpty ? 0 : toplistHeight)
+            // The container adds 6pt of breathing room above and below the
+            // cards; the reserved height grows by the same 12pt.
+            .frame(height: model.toplists.isEmpty ? 0 : toplistHeight + 2 * Theme.Layout.shelfVerticalBreathing)
         }
     }
 }

@@ -21,6 +21,16 @@ enum Theme {
 
     enum Layout {
         static let contentInset: CGFloat = 24
+        /// Horizontal padding inside a track row (TrackRow). Row-based
+        /// shelves (charts, song columns) inset their scroll track by
+        /// `trackListInset`, so the row artwork lands on `contentInset` —
+        /// the same line as the section titles and the cover cards —
+        /// instead of 10pt to its right.
+        static let trackRowHorizontalInset: CGFloat = 10
+        static var trackListInset: CGFloat { contentInset - trackRowHorizontalInset }
+        /// Vertical breathing room inside a shelf's scroll view, so hover
+        /// shadows and press scale never clip (see SectionShelfScroll).
+        static let shelfVerticalBreathing: CGFloat = 6
         static let cardSize: CGFloat = 160
         static func fittedShelfCardSize(availableWidth: CGFloat, leadingInset: CGFloat, spacing: CGFloat = 16) -> CGFloat {
             let usableWidth = availableWidth - leadingInset - spacing

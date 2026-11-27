@@ -140,6 +140,40 @@ struct Shelf<Content: View>: View {
     }
 }
 
+// MARK: - Shared section scroll container
+
+/// The one horizontal-scroll container every home section uses.
+///
+/// Encodes the section standard `Shelf` already follows: the track reaches
+/// the column edges, the resting inset lives inside the stack, 6pt of
+/// vertical breathing room so hover shadows and press scale never clip, and
+/// scroll clipping stays off for the same reason.
+///
+/// `edgeInset` is the resting leading edge of the first item — `contentInset`
+/// for cover cards, `trackListInset` for rows, whose own horizontal padding
+/// puts their artwork on the same 24pt line as the section titles and the
+/// cover cards. `rowHeight` pins the stack when the section sizes itself
+/// from a fitted height (新碟上架); pass nil when the content sizes itself.
+struct SectionShelfScroll<Content: View>: View {
+    var edgeInset: CGFloat = Theme.Layout.contentInset
+    var spacing: CGFloat = 16
+    var rowHeight: CGFloat?
+    @ViewBuilder var content: () -> Content
+
+    var body: some View {
+        ScrollView(.horizontal, showsIndicators: false) {
+            LazyHStack(alignment: .top, spacing: spacing) {
+                content()
+            }
+            .frame(height: rowHeight)
+            .padding(.horizontal, edgeInset)
+            .padding(.vertical, Theme.Layout.shelfVerticalBreathing)
+        }
+        .compatScrollClipDisabled()
+        .shelfEdgeClip()
+    }
+}
+
 // MARK: - Adaptive card grid
 
 /// Set by `CardGrid` on compact iOS so cards fill their (even) column instead

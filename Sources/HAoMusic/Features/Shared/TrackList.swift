@@ -182,7 +182,7 @@ struct TrackRow: View {
             likeAndDuration
                 .padding(.leading, isCompact ? 12 : 0)
         }
-        .padding(.horizontal, 10)
+        .padding(.horizontal, Theme.Layout.trackRowHorizontalInset)
         .padding(.vertical, isCompact ? 6 : 5)
         // Keep the row and its virtual scroll extent in agreement (#3).
         .frame(height: rowHeight)
