@@ -20,6 +20,11 @@ struct LocalMusicEntry: Codable, Hashable, Identifiable {
     var album: String
     var durationMS: Int
     var dateAdded: Date
+    /// Set for songs that live in a linked folder (LX/歌一刀 model): the
+    /// path inside that folder, played in place, never copied. Nil means
+    /// the file was copied into Documents/LocalMusic (the old import).
+    /// Old index files decode with nil, so they keep working.
+    var relativePath: String? = nil
 
     var track: Track {
         Track(localID: id, name: title, artist: artist, album: album, durationMS: durationMS)
@@ -73,10 +78,123 @@ final class LocalMusicStore: ObservableObject {
     private let directory: URL?
     private var indexURL: URL? { directory?.appendingPathComponent("index.json") }
 
+    /// The folder the user linked (LX/歌一刀 model): songs are scanned
+    /// from it and played in place, never copied. The access is a
+    /// security-scoped bookmark, persisted so it survives relaunches;
+    /// the scope is held for the whole app run once resolved.
+    private static let folderBookmarkKey = "localMusicLinkedFolderBookmark"
+    private static let folderNameKey = "localMusicLinkedFolderName"
+    private var linkedFolderURL: URL?
+    @Published private(set) var linkedFolderName: String?
+
     private init() {
         directory = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask).first?
             .appendingPathComponent("LocalMusic", isDirectory: true)
         loadIndex()
+        resolveLinkedFolder()
+    }
+
+    /// Links a folder the user picked in the Files app: the folder is
+    /// scanned for audio (LX's readDir, one level, no recursion) and its
+    /// songs join the list by path — no copy, no per-file wait. The
+    /// bookmark is persisted, so the folder stays linked across launches.
+    /// Returns how many songs joined, for the toast.
+    func linkFolder(_ url: URL) async -> ImportResult {
+        var result = ImportResult()
+        let scoped = url.startAccessingSecurityScopedResource()
+        defer { if scoped { url.stopAccessingSecurityScopedResource() } }
+        guard let bookmark = try? url.bookmarkData(options: [.withSecurityScope, .securityScopeAllowOnlyReadAccess],
+                                                   includingResourceValuesForKeys: nil, relativeTo: nil) else {
+            result.unreadable = 1
+            result.unreadableReasons = ["文件夹授权失败"]
+            return result
+        }
+        // A new link replaces the old one: its entries leave the list
+        // (the files themselves are never touched).
+        if linkedFolderURL != nil { unlinkFolder() }
+        UserDefaults.standard.set(bookmark, forKey: Self.folderBookmarkKey)
+        UserDefaults.standard.set(url.lastPathComponent, forKey: Self.folderNameKey)
+        result.imported = resolveLinkedFolder()
+        if !entries.isEmpty { saveIndex() }
+        return result
+    }
+
+    /// Drops the folder link. The folder's songs leave the list; the
+    /// files themselves are never touched, and copied songs stay.
+    func unlinkFolder() {
+        // Balance the single scope held since launch (resolveLinkedFolder
+        // started it once); the bookmark is dropped below, so the folder
+        // is forgotten entirely.
+        linkedFolderURL?.stopAccessingSecurityScopedResource()
+        linkedFolderURL = nil
+        linkedFolderName = nil
+        UserDefaults.standard.removeObject(forKey: Self.folderBookmarkKey)
+        UserDefaults.standard.removeObject(forKey: Self.folderNameKey)
+        entries.removeAll { $0.relativePath != nil }
+        saveIndex()
+    }
+
+    /// Resolves the persisted bookmark (if any) and holds its scope for
+    /// the app run, then scans the folder once. A stale bookmark is
+    /// re-created from the resolved URL so the link survives. Returns how
+    /// many songs joined the list in this scan.
+    @discardableResult
+    private func resolveLinkedFolder() -> Int {
+        guard let data = UserDefaults.standard.data(forKey: Self.folderBookmarkKey) else { return 0 }
+        var stale = false
+        guard let url = try? URL(resolvingBookmarkData: data, options: [.withSecurityScope],
+                                 relativeTo: nil, bookmarkDataIsStale: &stale),
+              url.startAccessingSecurityScopedResource() else {
+            UserDefaults.standard.removeObject(forKey: Self.folderBookmarkKey)
+            UserDefaults.standard.removeObject(forKey: Self.folderNameKey)
+            return 0
+        }
+        linkedFolderURL = url
+        linkedFolderName = UserDefaults.standard.string(forKey: Self.folderNameKey) ?? url.lastPathComponent
+        if stale,
+           let fresh = try? url.bookmarkData(options: [.withSecurityScope, .securityScopeAllowOnlyReadAccess],
+                                             includingResourceValuesForKeys: nil, relativeTo: nil) {
+            UserDefaults.standard.set(fresh, forKey: Self.folderBookmarkKey)
+        }
+        let joined = scanLinkedFolder()
+        if joined > 0 || entries.contains(where: { $0.relativePath != nil }) { saveIndex() }
+        return joined
+    }
+
+    /// One-level scan of the linked folder (LX's readDir): audio files
+    /// join the list by relative path with their filename as the title,
+    /// reusing ids for files already known; vanished files drop out.
+    /// Returns how many songs joined. iCloud files get their download
+    /// kicked off in the background so they are local by play time.
+    @discardableResult
+    private func scanLinkedFolder() -> Int {
+        guard let folder = linkedFolderURL else { return 0 }
+        let names = (try? FileManager.default.contentsOfDirectory(atPath: folder.path)) ?? []
+        var joined = 0
+        var nextID = (entries.map(\.id).min() ?? 0) - 1
+        var fresh: [LocalMusicEntry] = []
+        for name in names where Self.supportedExtensions.contains((name as NSString).pathExtension.lowercased()) {
+            if let existing = entries.first(where: { $0.relativePath == name }) {
+                fresh.append(existing)
+                continue
+            }
+            let url = folder.appendingPathComponent(name)
+            if FileManager.default.isUbiquitousItem(at: url) {
+                try? FileManager.default.startDownloadingUbiquitousItem(at: url)
+            }
+            let attrs = try? FileManager.default.attributesOfItem(atPath: url.path)
+            let size = attrs?[.size] as? Int ?? 0
+            let added = attrs?[.creationDate] as? Date ?? Date()
+            fresh.append(LocalMusicEntry(id: nextID, fileName: name, fileSize: size,
+                                         title: (name as NSString).deletingPathExtension,
+                                         artist: "", album: "", durationMS: 0, dateAdded: added,
+                                         relativePath: name))
+            nextID -= 1
+            joined += 1
+        }
+        entries = (entries.filter { $0.relativePath == nil } + fresh).sorted { $0.dateAdded > $1.dateAdded }
+        if joined > 0 { fillMetadata(for: fresh.filter { $0.durationMS == 0 }) }
+        return joined
     }
 
     func isLocal(_ trackID: Int) -> Bool {
@@ -84,12 +202,22 @@ final class LocalMusicStore: ObservableObject {
     }
 
     /// The on-disk file for a local track, or nil when the entry or the file
-    /// is gone. The player treats nil as "not a local track".
+    /// is gone. Folder entries resolve to the original file inside the
+    /// linked folder (the scope is held for the app run); copied entries
+    /// resolve inside Documents/LocalMusic. The player treats nil as
+    /// "not a local track".
     func fileURL(for trackID: Int) -> URL? {
         guard let entry = entries.first(where: { $0.id == trackID }),
-              let url = directory?.appendingPathComponent(entry.fileName),
+              let url = url(for: entry),
               FileManager.default.fileExists(atPath: url.path) else { return nil }
         return url
+    }
+
+    private func url(for entry: LocalMusicEntry) -> URL? {
+        if let relativePath = entry.relativePath {
+            return linkedFolderURL?.appendingPathComponent(relativePath)
+        }
+        return directory?.appendingPathComponent(entry.fileName)
     }
 
     /// Copies the picked files in — and nothing else. Import is only a
@@ -176,13 +304,15 @@ final class LocalMusicStore: ObservableObject {
 
     /// Deletes the files and their entries. A song playing right now keeps
     /// playing from its open handle until it ends; the next resolve skips it.
+    /// Folder songs only leave the list — the user's original file is
+    /// never deleted.
     func delete(ids: Set<Int>) {
         guard !ids.isEmpty else { return }
         for id in ids {
-            if let entry = entries.first(where: { $0.id == id }),
-               let url = directory?.appendingPathComponent(entry.fileName) {
-                try? FileManager.default.removeItem(at: url)
-            }
+            guard let entry = entries.first(where: { $0.id == id }),
+                  entry.relativePath == nil,
+                  let url = directory?.appendingPathComponent(entry.fileName) else { continue }
+            try? FileManager.default.removeItem(at: url)
         }
         entries.removeAll { ids.contains($0.id) }
         saveIndex()
@@ -198,7 +328,10 @@ final class LocalMusicStore: ObservableObject {
         }
         let loadedCount = saved.count
         // A file deleted outside the app (Files, Finder sharing) drops its entry.
+        // Folder entries live outside this directory; their existence is
+        // checked by scanLinkedFolder, not here.
         saved.removeAll { entry in
+            entry.relativePath == nil &&
             !FileManager.default.fileExists(atPath: directory.appendingPathComponent(entry.fileName).path)
         }
         // The other direction: audio dropped into the folder (Finder, iTunes
@@ -393,13 +526,18 @@ final class LocalMusicStore: ObservableObject {
     /// its filename as the title, and import never waits for this. Each
     /// file gets 10 seconds; a stalled read is skipped, not retried.
     private func fillMetadata(for fresh: [LocalMusicEntry]) {
-        guard let directory else { return }
-        Task { [entries = fresh, directory] in
-            for entry in entries {
+        // Resolve the URLs now (folder entries need the linked folder
+        // URL); the background reads only need the URLs, not the store.
+        let jobs = fresh.compactMap { entry -> (Int, URL)? in
+            guard let url = url(for: entry) else { return nil }
+            return (entry.id, url)
+        }
+        guard !jobs.isEmpty else { return }
+        Task {
+            for (id, url) in jobs {
                 if Task.isCancelled { return }
-                let url = directory.appendingPathComponent(entry.fileName)
                 guard let meta = await Self.readMetadata(of: url) else { continue }
-                applyMetadata(id: entry.id, title: meta.title, artist: meta.artist,
+                applyMetadata(id: id, title: meta.title, artist: meta.artist,
                               album: meta.album, durationMS: meta.durationMS)
             }
         }

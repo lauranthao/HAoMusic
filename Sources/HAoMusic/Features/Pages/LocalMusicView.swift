@@ -7,6 +7,8 @@ struct LocalMusicView: View {
     @ObservedObject private var store = LocalMusicStore.shared
     private let player = PlayerService.shared
     @State private var showImporter = false
+    @State private var showFolderPicker = false
+    @State private var confirmUnlinkFolder = false
     @State private var isSelecting = false
     @State private var selectedIDs: Set<Int> = []
     @State private var confirmRemoval = false
@@ -23,8 +25,18 @@ struct LocalMusicView: View {
 
                 if tracks.isEmpty {
                     EmptyStateView(icon: "music.note", title: "还没有本地歌曲",
-                                   subtitle: "从文件 App 导入 MP3、FLAC 等音频文件，或在微信、QQ 里长按音频文件、用其他应用打开选 HAo Music，不用登录、不用联网就能听")
+                                   subtitle: "选装歌的文件夹一键导进来，歌存在原位置直接播；或从文件 App 导入 MP3、FLAC 等音频文件，也可以在微信、QQ 里长按音频文件、用其他应用打开选 HAo Music，不用登录、不用联网就能听")
                         .frame(minHeight: 300)
+                } else if let folderName = store.linkedFolderName {
+                    HStack(spacing: 6) {
+                        Image(systemName: "folder")
+                        Text("文件夹：\(folderName)")
+                        Spacer(minLength: 8)
+                        Button("取消关联") { confirmUnlinkFolder = true }
+                    }
+                    .font(.system(size: 12))
+                    .foregroundStyle(.secondary)
+                    .padding(.horizontal, Theme.Layout.contentInset)
                 }
             }
         } rows: { layout in
@@ -60,7 +72,11 @@ struct LocalMusicView: View {
         .alert("移除所选的 \(pendingRemoval.count) 首本地歌曲？", isPresented: $confirmRemoval) {
             Button("移除", role: .destructive) { removeSelection() }
             Button("取消", role: .cancel) {}
-        } message: { Text("文件会从手机上删除。") }
+        } message: { Text("文件夹里的歌只从列表移除，原文件不动；拷进来的歌会从手机上删除。") }
+        .alert("取消关联文件夹？", isPresented: $confirmUnlinkFolder) {
+            Button("取消关联", role: .destructive) { store.unlinkFolder() }
+            Button("取消", role: .cancel) {}
+        } message: { Text("文件夹里的歌会从列表移除，原文件不动。") }
         // The picker shows every file, not just the ones the system
         // recognises as audio: a song with no extension, or in a format the
         // system does not label audio (.ncm, .qmc, .kgm, ...), would
@@ -79,6 +95,20 @@ struct LocalMusicView: View {
                 }
             }
         }
+        // The folder picker is the LX/歌一刀 way in: the user picks the
+        // folder the songs live in once, the app scans it and plays the
+        // files in place — no copy, so there is nothing to fail on.
+        .fileImporter(isPresented: $showFolderPicker, allowedContentTypes: [.folder],
+                      allowsMultipleSelection: false) { result in
+            switch result {
+            case .success(let urls):
+                if let url = urls.first { linkFolderPicked(url) }
+            case .failure(let error):
+                if (error as? CocoaError)?.code != .userCancelled {
+                    ToastCenter.shared.show(error.localizedDescription)
+                }
+            }
+        }
     }
 
     private var header: some View {
@@ -89,11 +119,31 @@ struct LocalMusicView: View {
                 .lineLimit(1)
                 .fixedSize(horizontal: true, vertical: false)
             Spacer(minLength: 12)
+            folderButton
             importButton
             playAllButton
         }
         .padding(.horizontal, Theme.Layout.contentInset)
         .padding(.top, 12)
+    }
+
+    /// LX/歌一刀's import: link the folder the songs live in; the app
+    /// scans it and plays the files in place, so there is no copy to fail.
+    private var folderButton: some View {
+        Button { showFolderPicker = true } label: {
+            HStack(spacing: 6) {
+                Image(systemName: "folder")
+                Text(store.linkedFolderName == nil ? "选择文件夹" : "换文件夹")
+            }
+            .font(.system(size: 12.5, weight: .medium))
+            .lineLimit(1)
+            .fixedSize(horizontal: true, vertical: false)
+            .padding(.horizontal, 14)
+            .padding(.vertical, 7)
+            .background(.primary.opacity(0.06), in: Capsule())
+        }
+        .buttonStyle(.pressable)
+        .accessibilityIdentifier("link-local-music-folder")
     }
 
     private var importButton: some View {
@@ -179,6 +229,18 @@ struct LocalMusicView: View {
         Task {
             defer { isImporting = false }
             store.reportImport(await store.importFiles(urls))
+        }
+    }
+
+    private func linkFolderPicked(_ url: URL) {
+        Task {
+            let result = await store.linkFolder(url)
+            if result.imported == 0 && result.unreadable == 0 {
+                let linked = store.entries.filter { $0.relativePath != nil }.count
+                ToastCenter.shared.show(linked > 0 ? "文件夹里的歌都已经在列表里了" : "文件夹里没有能播的音频文件")
+            } else {
+                store.reportImport(result)
+            }
         }
     }
 }
