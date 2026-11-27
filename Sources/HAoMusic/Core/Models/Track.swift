@@ -101,28 +101,6 @@ struct Track: Codable, Hashable, Identifiable {
         qqMediaMid = try? c.decodeIfPresent(String.self, forKey: .qqMediaMid)
     }
 
-    /// A song imported from the user's own files. Negative ids never collide
-    /// with NetEase song ids, so the player can tell a local track apart
-    /// from a streamed one.
-    init(localID id: Int, name: String, artist: String, album: String, durationMS: Int) {
-        self.id = id
-        self.name = name
-        self.artists = artist.isEmpty ? [] : [ArtistRef(id: 0, name: artist)]
-        self.album = AlbumRef(id: 0, name: album, picUrl: nil)
-        self.durationMS = durationMS
-        self.alias = []
-        self.transNames = []
-        self.fee = 0
-        self.mvID = 0
-        self.trackNo = 0
-        self.disc = nil
-        self.noCopyright = false
-        self.isCloud = false
-        self.embeddedPrivilege = nil
-        self.qqMid = nil
-        self.qqMediaMid = nil
-    }
-
     /// A track found by QQ search. QQ's numeric songid would collide with
     /// NetEase ids, and a random id would break queue persistence across
     /// launches, so the id is a stable negative hash of the songmid.

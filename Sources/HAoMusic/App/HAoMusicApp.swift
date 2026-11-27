@@ -8,13 +8,6 @@ struct HAoMusicApp: App {
     var body: some Scene {
         WindowGroup {
             IOSMainWindow()
-                // Audio sent from another app (WeChat/QQ "用其他应用打开"):
-                // the system drops it in Documents/Inbox and hands us the
-                // URL; LocalMusicStore imports it the same way as a picked
-                // file. Registered via CFBundleDocumentTypes (public.audio).
-                .onOpenURL { url in
-                    Task { await LocalMusicStore.shared.importOpened(url) }
-                }
         }
     }
 }

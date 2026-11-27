@@ -242,7 +242,6 @@
 		25D514483482989B7447D485 = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StorageSpaceModel.swift; sourceTree = "<group>"; };
 		3895003ACA7353BA4632A568 = {isa = PBXBuildFile; fileRef = 25D514483482989B7447D485; };
 		5C45221C19A3418F576756EA = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StorageUsage.swift; sourceTree = "<group>"; };
-		DEA7FDD66E4C750668091793 = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LocalMusicStore.swift; sourceTree = "<group>"; };
 		D8553B670838CB557028553D = {isa = PBXBuildFile; fileRef = 5C45221C19A3418F576756EA; };
 		4FE276360358ACF5DBD7BF7E = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LoginKey.swift; sourceTree = "<group>"; };
 		D7FF5F0B0F4B4E524880F78B = {isa = PBXBuildFile; fileRef = 4FE276360358ACF5DBD7BF7E; };
@@ -333,10 +332,7 @@
 		A78E160BF974048B30C167E0 = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DisclaimerView.swift; sourceTree = "<group>"; };
 		C743F70895A28FFE22685B07 = {isa = PBXBuildFile; fileRef = A78E160BF974048B30C167E0; };
 		B915B09B6A533F3A5AD66EB5 = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DownloadedMusicView.swift; sourceTree = "<group>"; };
-		FFD87311575CBE7F55DC39BA = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LocalMusicView.swift; sourceTree = "<group>"; };
 		8628A6358610E1764D1B6E62 = {isa = PBXBuildFile; fileRef = B915B09B6A533F3A5AD66EB5; };
-		7AD88B82ACDEA24DB590EBAA = {isa = PBXBuildFile; fileRef = FFD87311575CBE7F55DC39BA; };
-		C2CCFB6E10A25B64E9D16BFF = {isa = PBXBuildFile; fileRef = DEA7FDD66E4C750668091793; };
 		A48CDF232F155C328248E0A7 = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FMView.swift; sourceTree = "<group>"; };
 		2984FCCE5F25394A2156C2DA = {isa = PBXBuildFile; fileRef = A48CDF232F155C328248E0A7; };
 		7C2C4A3BBF33072D66C1A38E = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = IOSUpdater.swift; sourceTree = "<group>"; };
@@ -737,7 +733,6 @@
 				25D514483482989B7447D485,
 				5C45221C19A3418F576756EA,
 				43E5FDC109E0448C95375FEE,
-				DEA7FDD66E4C750668091793,
 			);
 			name = Storage;
 			path = Storage;
@@ -818,7 +813,6 @@
 				00956D8C47F52E9132B54495,
 				7171AC70D7324A229FEF1D3F,
 				169514F1346740D8A107546C,
-				FFD87311575CBE7F55DC39BA,
 			);
 			name = Pages;
 			path = Pages;
@@ -1235,8 +1229,6 @@
 				5CE4EB7A574B4BCEB3779C10,
 				2EB94AAD412345F7BA3C6B70,
 				5102B4C8A5474B9C9838E401,
-				7AD88B82ACDEA24DB590EBAA,
-				C2CCFB6E10A25B64E9D16BFF,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

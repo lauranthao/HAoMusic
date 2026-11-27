@@ -762,18 +762,6 @@ final class PlayerService: ObservableObject {
         let cacheEnabled = SettingsManager.shared.enableAudioCache && !skipsLocalCopies
         lastRefusalCode = nil
 
-        // An imported local file plays straight from disk — no account, no
-        // network, no quality ladder. A corrupt or unreadable file fails
-        // through the item observer, like any other unplayable song.
-        if !skipsLocalCopies, let localURL = LocalMusicStore.shared.fileURL(for: track.id) {
-            // Duration may still be 0 while the background metadata fill-in
-            // has not read it yet; installResolvedAsset falls back to the
-            // item's own length when durationMS is nil.
-            _ = await installResolvedAsset(AVURLAsset(url: localURL), for: track, generation: generation,
-                                           durationMS: track.durationMS > 0 ? track.durationMS : nil, resumeAt: resumeAt)
-            return
-        }
-
         // A downloaded copy beats the network, and is all there is without one.
         if !skipsLocalCopies, let lease = await acquireOfflineLease(for: track, generation: generation, reusing: localLease) {
             await playOfflineFile(lease, for: track, generation: generation, resumeAt: resumeAt)
@@ -1309,8 +1297,6 @@ final class PlayerService: ObservableObject {
     }
 
     private func loadLyrics(for track: Track, generation: Int) async {
-        // Local files have no NetEase lyrics page; never spend a request on one.
-        if LocalMusicStore.shared.isLocal(track.id) { return }
         let scope = offlineAccountScope
         if let scope, let saved = await OfflineMetadataStore.shared.lyrics(trackID: track.id, scope: scope) {
             guard generation == resolveGeneration else { return }

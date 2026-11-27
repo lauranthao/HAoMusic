@@ -106,7 +106,6 @@ enum Destination: Hashable {
     case recents
     case collections(CollectionTab)
     case cloud
-    case localMusic
     case search(String)
 }
 
@@ -157,8 +156,6 @@ struct DestinationsModifier: ViewModifier {
                     CollectionsView(initialTab: tab)
                 case .cloud:
                     CloudView()
-                case .localMusic:
-                    LocalMusicView()
                 case .search(let query):
                     SearchView(query: query)
                 }
