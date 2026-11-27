@@ -315,6 +315,10 @@ struct AlbumDetailView: View {
             do {
                 try await MusicAPI.subscribeAlbum(id: albumID, subscribe: !isSubscribed)
                 isSubscribed.toggle()
+                // The 我的 page reads the collected albums from the account:
+                // refresh them now so the shelf shows this album without
+                // opening 收藏 first.
+                await account.refreshSublists()
                 ToastCenter.shared.show(isSubscribed ? String(localized: "已收藏专辑") : String(localized: "已取消收藏"))
             } catch {
                 ToastCenter.shared.show(error.localizedDescription)

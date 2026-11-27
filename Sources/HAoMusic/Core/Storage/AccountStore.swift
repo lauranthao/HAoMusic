@@ -80,7 +80,10 @@ final class AccountStore: ObservableObject {
         guard let uid = profile?.userId else { return }
         async let playlists = try? MusicAPI.userPlaylists(uid: uid)
         async let liked = try? MusicAPI.likedTrackIDs(uid: uid)
-        let (fetchedPlaylists, fetchedLiked) = await (playlists, liked)
+        // The 我的 page reads likedAlbums/likedArtists too; they used to load
+        // only when 收藏 opened, so its shelves stayed empty until then.
+        async let sublists = refreshSublists()
+        let (fetchedPlaylists, fetchedLiked, _) = await (playlists, liked, sublists)
         guard profile?.userId == uid, profileBinding == MusicClient.shared.authenticationFingerprint else { return }
         userPlaylists = fetchedPlaylists ?? userPlaylists
         if let ids = fetchedLiked { likedTrackIDs = Set(ids) }

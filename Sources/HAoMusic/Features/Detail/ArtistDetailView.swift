@@ -294,6 +294,10 @@ struct ArtistDetailView: View {
             do {
                 try await MusicAPI.subscribeArtist(id: artistID, subscribe: !isFollowed)
                 isFollowed.toggle()
+                // The 我的 page reads the followed artists from the account:
+                // refresh them now so the shelf shows this artist without
+                // opening 收藏 first.
+                await account.refreshSublists()
                 ToastCenter.shared.show(isFollowed ? String(localized: "已关注歌手") : String(localized: "已取消关注"))
             } catch {
                 ToastCenter.shared.show(error.localizedDescription)

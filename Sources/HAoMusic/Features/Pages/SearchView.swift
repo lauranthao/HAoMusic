@@ -1,5 +1,34 @@
 import SwiftUI
 
+/// Search history: the user's own submitted queries, most-recent-first,
+/// kept on device (UserDefaults, cap 10). Nothing leaves the device.
+@MainActor
+final class SearchHistory: ObservableObject {
+    static let shared = SearchHistory()
+    private static let storageKey = "search.history"
+    private static let limit = 10
+
+    @Published private(set) var records: [String] = []
+
+    private init() {
+        records = UserDefaults.standard.stringArray(forKey: Self.storageKey) ?? []
+    }
+
+    func record(_ query: String) {
+        let trimmed = query.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return }
+        records.removeAll { $0 == trimmed }
+        records.insert(trimmed, at: 0)
+        if records.count > Self.limit { records = Array(records.prefix(Self.limit)) }
+        UserDefaults.standard.set(records, forKey: Self.storageKey)
+    }
+
+    func clear() {
+        records = []
+        UserDefaults.standard.removeObject(forKey: Self.storageKey)
+    }
+}
+
 @MainActor
 final class SearchViewModel: ObservableObject {
     enum Tab: String, CaseIterable, Identifiable {
@@ -25,8 +54,34 @@ final class SearchViewModel: ObservableObject {
 
     var isLoading: Bool { !loadingTabs.isEmpty }
 
+    /// The day's promoted search term (NetEase's default keyword): the only
+    /// hot word the NetEase API exposes without login. The hot list endpoint
+    /// (/search/hot/detail) answers 404 through the app's eapi client, and
+    /// there is no weapi signer in the codebase, so this is the hot section.
+    @Published var hotKeyword: String?
+
     init(query: String) {
         self.query = query
+        // A query this page was opened with (macOS toolbar submit) is a
+        // submitted search too.
+        if !query.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            SearchHistory.shared.record(query)
+        }
+    }
+
+    /// A submitted search: record it, then run it like setQuery + load.
+    func submit(_ query: String) {
+        let trimmed = query.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return }
+        SearchHistory.shared.record(trimmed)
+        setQuery(trimmed)
+    }
+
+    func loadHotKeyword() async {
+        guard hotKeyword == nil else { return }
+        if let keyword = try? await MusicAPI.searchDefaultKeyword(), !keyword.isEmpty {
+            hotKeyword = keyword
+        }
     }
 
     func setQuery(_ newQuery: String) {
@@ -92,11 +147,22 @@ final class SearchViewModel: ObservableObject {
 
 struct SearchView: View {
     @StateObject private var model: SearchViewModel
+    @StateObject private var history = SearchHistory.shared
     @State private var searchText: String = ""
 
     init(query: String) {
         _model = StateObject(wrappedValue: SearchViewModel(query: query))
         _searchText = State(initialValue: query)
+    }
+
+    /// Run a search from a chip (history or hot word): show it in the field,
+    /// record it, and load.
+    private func runSearch(_ query: String) {
+        let trimmed = query.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return }
+        searchText = trimmed
+        model.submit(trimmed)
+        Task { await model.load(tab: model.tab) }
     }
 
     var body: some View {
@@ -114,7 +180,7 @@ struct SearchView: View {
             prompt: "搜索歌曲、歌手、专辑、歌单"
         )
         .onSubmit(of: .search) {
-            model.setQuery(searchText)
+            model.submit(searchText)
             Task { await model.load(tab: model.tab) }
         }
         .onChange(of: searchText) { newValue in
@@ -191,20 +257,70 @@ struct SearchView: View {
     }
 
     private var emptySearchPrompt: some View {
-        VStack(spacing: 16) {
-            Image(systemName: "magnifyingglass")
-                .font(.system(size: 48, weight: .light))
-                .foregroundStyle(.tertiary)
-                .padding(.top, 60)
-            Text("探索海量华语流行与经典音乐")
-                .font(.headline)
-                .foregroundStyle(.secondary)
-            Text("输入歌曲名称、歌手名或歌单关键字开始搜索")
-                .font(.subheadline)
-                .foregroundStyle(.tertiary)
+        VStack(alignment: .leading, spacing: 24) {
+            if !history.records.isEmpty {
+                VStack(alignment: .leading, spacing: 12) {
+                    HStack {
+                        Text("搜索记录")
+                            .font(.title2.weight(.semibold))
+                        Spacer()
+                        Button("清除") { history.clear() }
+                            .font(.system(size: 13))
+                            .foregroundStyle(.secondary)
+                    }
+                    .padding(.horizontal, Theme.Layout.contentInset)
+                    ScrollView(.horizontal, showsIndicators: false) {
+                        HStack(spacing: 8) {
+                            Spacer().frame(width: Theme.Layout.contentInset - 8)
+                            ForEach(history.records, id: \.self) { record in
+                                Button { runSearch(record) } label: { Text(record) }
+                                    .buttonStyle(.chip(isSelected: false))
+                            }
+                            Spacer().frame(width: Theme.Layout.contentInset - 8)
+                        }
+                        .padding(.vertical, 2)
+                    }
+                    .shelfEdgeClip()
+                }
+            }
+
+            if let hot = model.hotKeyword {
+                VStack(alignment: .leading, spacing: 12) {
+                    Text("热门搜索")
+                        .font(.title2.weight(.semibold))
+                        .padding(.horizontal, Theme.Layout.contentInset)
+                    ScrollView(.horizontal, showsIndicators: false) {
+                        HStack(spacing: 8) {
+                            Spacer().frame(width: Theme.Layout.contentInset - 8)
+                            Button { runSearch(hot) } label: { Text(hot) }
+                                .buttonStyle(.chip(isSelected: false))
+                            Spacer().frame(width: Theme.Layout.contentInset - 8)
+                        }
+                        .padding(.vertical, 2)
+                    }
+                    .shelfEdgeClip()
+                }
+            }
+
+            if history.records.isEmpty && model.hotKeyword == nil {
+                VStack(spacing: 16) {
+                    Image(systemName: "magnifyingglass")
+                        .font(.system(size: 48, weight: .light))
+                        .foregroundStyle(.tertiary)
+                        .padding(.top, 60)
+                    Text("探索海量华语流行与经典音乐")
+                        .font(.headline)
+                        .foregroundStyle(.secondary)
+                    Text("输入歌曲名称、歌手名或歌单关键字开始搜索")
+                        .font(.subheadline)
+                        .foregroundStyle(.tertiary)
+                }
+                .frame(maxWidth: .infinity)
+                .padding(.horizontal, 32)
+            }
         }
-        .frame(maxWidth: .infinity)
-        .padding(.horizontal, 32)
+        .padding(.top, 12)
+        .task { await model.loadHotKeyword() }
     }
 
     private var currentEmpty: Bool {

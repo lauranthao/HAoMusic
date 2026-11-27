@@ -333,6 +333,18 @@ enum MusicAPI {
         return resp.data?.dailySongs ?? []
     }
 
+    struct HomeTopSongsResponse: Decodable {
+        let data: [Track]
+    }
+
+    /// 地区热门: areaId 0 全部, 7 华语, 96 欧美, 8 日本, 16 韩国.
+    /// Works without login; the endpoint returns the legacy song shape
+    /// (`artists`/`album`/`duration`), which Track decodes.
+    static func homeTopSongs(areaID: Int) async throws -> [Track] {
+        try await eapi(HomeTopSongsResponse.self, "/v1/discovery/new/songs",
+                       ["areaId": areaID, "total": true]).data.filter { $0.id > 0 }
+    }
+
     struct RecommendDislikeResponse: Decodable {
         let data: Track
 

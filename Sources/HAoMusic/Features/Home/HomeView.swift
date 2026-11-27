@@ -42,6 +42,116 @@ final class HomeViewModel: ObservableObject {
     @Published var topArtists: [ArtistSummary] = []
     @Published var dailyFirstCover: String?
 
+    /// 地区热门: 全部 / 华语 / 欧美 / 日韩. 日韩 merges the Japanese (8) and
+    /// Korean (16) lists, since the endpoint has no combined area.
+    enum RegionalArea: Int, CaseIterable, Identifiable {
+        case all = 0
+        case chinese = 7
+        case western = 96
+        case japanKorea = -1
+
+        var id: Int { rawValue }
+        var title: String {
+            switch self {
+            case .all: return String(localized: "全部")
+            case .chinese: return String(localized: "华语")
+            case .western: return String(localized: "欧美")
+            case .japanKorea: return String(localized: "日韩")
+            }
+        }
+    }
+
+    @Published var regionalArea: RegionalArea = .all
+    @Published var regionalSongs: [Track] = []
+    @Published var regionalLoading = false
+    private var regionalCache: [RegionalArea: [Track]] = [:]
+
+    /// 喜欢的歌手推荐: songs similar to the top songs of the user's liked
+    /// artists. Cached per liked-artist set; a refresh re-seeds it.
+    @Published var likedArtistSongs: [Track] = []
+    @Published var likedArtistLoading = false
+    @Published var refreshNonce = 0
+    private var likedArtistKey: String?
+    private var previousArtistSeeds: Set<Int> = []
+
+    /// Round-robin merge of per-source song lists, deduped, capped: every
+    /// source stays represented instead of the fastest one filling the list.
+    static func interleaveSongs(_ groups: [[Track]], excluding excluded: Set<Int> = [], limit: Int = 100) -> [Track] {
+        var seen = excluded
+        var result: [Track] = []
+        let maxCount = groups.map(\.count).max() ?? 0
+        for index in 0..<maxCount {
+            for group in groups where group.indices.contains(index) {
+                let track = group[index]
+                if seen.insert(track.id).inserted { result.append(track) }
+                if result.count == limit { return result }
+            }
+        }
+        return result
+    }
+
+    /// Up to `limit` seeds, preferring ones the previous batch did not use.
+    static func pickSeeds(from candidates: [Int], avoiding previous: Set<Int>, limit: Int = 3) -> [Int] {
+        var seen = Set<Int>()
+        let unique = candidates.filter { seen.insert($0).inserted }
+        return Array((unique.filter { !previous.contains($0) } + unique.filter { previous.contains($0) }).prefix(limit))
+    }
+
+    func loadRegional(area: RegionalArea) async {
+        if let cached = regionalCache[area] {
+            regionalSongs = cached
+            return
+        }
+        regionalLoading = true
+        defer { regionalLoading = false }
+        let songs: [Track]
+        do {
+            switch area {
+            case .japanKorea:
+                async let japanese = try? MusicAPI.homeTopSongs(areaID: 8)
+                async let korean = try? MusicAPI.homeTopSongs(areaID: 16)
+                let (jp, kr) = await (japanese, korean)
+                songs = Self.interleaveSongs([jp ?? [], kr ?? []], limit: 100)
+            default:
+                songs = try await MusicAPI.homeTopSongs(areaID: area.rawValue)
+            }
+        } catch {
+            return
+        }
+        guard !songs.isEmpty else { return }
+        regionalCache[area] = songs
+        if regionalArea == area { regionalSongs = songs }
+    }
+
+    func loadLikedArtistSongs(artists: [ArtistSummary], excluding likedIDs: Set<Int>) async {
+        let ids = artists.map(\.id).sorted()
+        guard !ids.isEmpty else {
+            likedArtistSongs = []
+            likedArtistKey = nil
+            return
+        }
+        let key = ids.map(String.init).joined(separator: ",")
+        guard likedArtistKey != key else { return }
+        likedArtistLoading = true
+        defer { likedArtistLoading = false }
+        let seeds = Self.pickSeeds(from: ids.shuffled(), avoiding: previousArtistSeeds)
+        let groups = await withTaskGroup(of: [Track]?.self) { group in
+            for id in seeds {
+                group.addTask {
+                    guard let top = try? await MusicAPI.artist(id: id).hotSongs.first else { return nil }
+                    return try? await MusicAPI.similarSongs(id: top.id, limit: 12)
+                }
+            }
+            var collected: [[Track]] = []
+            for await songs in group { if let songs { collected.append(songs) } }
+            return collected
+        }
+        guard !groups.isEmpty else { return }
+        previousArtistSeeds = Set(seeds)
+        likedArtistKey = key
+        likedArtistSongs = Self.interleaveSongs(groups, excluding: likedIDs, limit: 36)
+    }
+
     func load(loggedIn: Bool) async {
         if case .loaded = state { return }
         state = .loading
@@ -72,6 +182,12 @@ final class HomeViewModel: ObservableObject {
 
     func reload(loggedIn: Bool) async {
         state = .idle
+        regionalCache = [:]
+        regionalSongs = []
+        regionalArea = .all
+        likedArtistKey = nil
+        likedArtistSongs = []
+        refreshNonce &+= 1
         await load(loggedIn: loggedIn)
     }
 
@@ -207,6 +323,12 @@ struct HomeView: View {
                     }
                     .padding(.horizontal, Theme.Layout.contentInset)
                 }
+            }
+
+            regionalSection
+
+            if !account.likedArtists.isEmpty {
+                likedArtistSection
             }
 
             if !model.newAlbums.isEmpty {
@@ -427,6 +549,66 @@ struct HomeView: View {
         }
         .padding(.vertical, 12)
         .contentShape(Rectangle())
+    }
+
+    // MARK: - 地区热门 / 喜欢的歌手推荐
+
+    private var regionalSection: some View {
+        VStack(alignment: .leading, spacing: Theme.Layout.sectionHeaderSpacing) {
+            SectionHeader(title: "地区热门")
+                .padding(.horizontal, Theme.Layout.contentInset)
+            ScrollView(.horizontal, showsIndicators: false) {
+                HStack(spacing: 8) {
+                    Spacer().frame(width: Theme.Layout.contentInset - 8)
+                    ForEach(HomeViewModel.RegionalArea.allCases) { area in
+                        Button {
+                            model.regionalArea = area
+                        } label: {
+                            Text(area.title)
+                        }
+                        .buttonStyle(.chip(isSelected: model.regionalArea == area))
+                    }
+                    Spacer().frame(width: Theme.Layout.contentInset - 8)
+                }
+                .padding(.vertical, 2)
+            }
+            .shelfEdgeClip()
+            if model.regionalLoading && model.regionalSongs.isEmpty {
+                HStack {
+                    Spacer()
+                    ProgressView().controlSize(.small)
+                    Spacer()
+                }
+                .padding(.vertical, 20)
+            } else if !model.regionalSongs.isEmpty {
+                TrackListView(tracks: Array(model.regionalSongs.prefix(10)), style: .compact, source: .none)
+                    .padding(.horizontal, Theme.Layout.contentInset - 10)
+            }
+        }
+        .task(id: (model.refreshNonce, model.regionalArea)) {
+            await model.loadRegional(area: model.regionalArea)
+        }
+    }
+
+    private var likedArtistSection: some View {
+        VStack(alignment: .leading, spacing: Theme.Layout.sectionHeaderSpacing) {
+            SectionHeader(title: "喜欢的歌手推荐")
+                .padding(.horizontal, Theme.Layout.contentInset)
+            if model.likedArtistLoading && model.likedArtistSongs.isEmpty {
+                HStack {
+                    Spacer()
+                    ProgressView().controlSize(.small)
+                    Spacer()
+                }
+                .padding(.vertical, 20)
+            } else if !model.likedArtistSongs.isEmpty {
+                TrackListView(tracks: Array(model.likedArtistSongs.prefix(10)), style: .compact, source: .none)
+                    .padding(.horizontal, Theme.Layout.contentInset - 10)
+            }
+        }
+        .task(id: (model.refreshNonce, account.likedArtists.map(\.id))) {
+            await model.loadLikedArtistSongs(artists: account.likedArtists, excluding: account.likedTrackIDs)
+        }
     }
 
     private func playPlaylist(_ id: Int) {
