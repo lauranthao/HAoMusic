@@ -23,7 +23,7 @@ struct LocalMusicView: View {
 
                 if tracks.isEmpty {
                     EmptyStateView(icon: "music.note", title: "还没有本地歌曲",
-                                   subtitle: "从文件 App 导入 MP3、FLAC 等音频文件，不用登录、不用联网就能听")
+                                   subtitle: "从文件 App 导入 MP3、FLAC 等音频文件，或在微信、QQ 里长按音频文件、用其他应用打开选 HAo Music，不用登录、不用联网就能听")
                         .frame(minHeight: 300)
                 }
             }
@@ -178,16 +178,7 @@ struct LocalMusicView: View {
         isImporting = true
         Task {
             defer { isImporting = false }
-            let result = await store.importFiles(urls)
-            var parts: [String] = []
-            if result.imported > 0 { parts.append("已导入 \(result.imported) 首") }
-            if result.duplicates > 0 { parts.append("\(result.duplicates) 首已在本地音乐中") }
-            if result.unsupported > 0 {
-                let exts = result.unsupportedExtensions.prefix(3).joined(separator: "、")
-                parts.append("\(result.unsupported) 个文件不支持（\(exts) 格式不能播）")
-            }
-            if result.unreadable > 0 { parts.append("\(result.unreadable) 个文件无法读取") }
-            if !parts.isEmpty { ToastCenter.shared.show(parts.joined(separator: "，")) }
+            store.reportImport(await store.importFiles(urls))
         }
     }
 }

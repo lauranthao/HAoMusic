@@ -43,7 +43,11 @@ final class LocalMusicStore: ObservableObject {
         var unsupportedExtensions: [String] = []
         /// The file could not be copied or read (permissions, download,
         /// duration). Kept apart from unsupported: a different problem.
+        /// The reasons carry the underlying error text, so a failed import
+        /// says WHY instead of a bare "无法读取" (build 10, chen 2026-11-27:
+        /// four builds failed and nobody could say what happened).
         var unreadable = 0
+        var unreadableReasons: [String] = []
     }
 
     /// Every audio format the iPhone itself can decode (AVFoundation):
@@ -122,8 +126,11 @@ final class LocalMusicStore: ObservableObject {
                 result.imported += 1
             case .duplicate:
                 result.duplicates += 1
-            case .unsupported:
+            case .unreadable(let reason):
                 result.unreadable += 1
+                if let reason, !reason.isEmpty, !result.unreadableReasons.contains(reason) {
+                    result.unreadableReasons.append(reason)
+                }
             }
         }
         importProgress = nil
@@ -133,6 +140,38 @@ final class LocalMusicStore: ObservableObject {
             fillMetadata(for: newEntries)
         }
         return result
+    }
+
+    /// One audio file sent to the app from elsewhere (WeChat/QQ "用其他
+    /// 应用打开", Files "共享"): the system drops it in Documents/Inbox
+    /// and the app imports it the same way as a picked file, then clears
+    /// the Inbox copy so it does not pile up. The result is toasted here
+    /// because this path has no view of its own to report it.
+    func importOpened(_ url: URL) async {
+        let result = await importFiles([url])
+        reportImport(result)
+        if result.imported > 0 {
+            try? FileManager.default.removeItem(at: url)
+        }
+    }
+
+    /// One line per outcome, with the real reason when a file could not
+    /// be read — the same wording from the picker path and the Open-In
+    /// path, so a failure can be quoted back in one sentence.
+    func reportImport(_ result: ImportResult) {
+        var parts: [String] = []
+        if result.imported > 0 { parts.append("已导入 \(result.imported) 首") }
+        if result.duplicates > 0 { parts.append("\(result.duplicates) 首已在本地音乐中") }
+        if result.unsupported > 0 {
+            let exts = result.unsupportedExtensions.prefix(3).joined(separator: "、")
+            parts.append("\(result.unsupported) 个文件不支持（\(exts) 格式不能播）")
+        }
+        if result.unreadable > 0 {
+            var text = "\(result.unreadable) 个文件无法读取"
+            if let reason = result.unreadableReasons.first { text += "（\(reason)）" }
+            parts.append(text)
+        }
+        if !parts.isEmpty { ToastCenter.shared.show(parts.joined(separator: "，")) }
     }
 
     /// Deletes the files and their entries. A song playing right now keeps
@@ -197,14 +236,24 @@ final class LocalMusicStore: ObservableObject {
     private enum PreparedImport {
         case ready(LocalMusicEntry)
         case duplicate
-        case unsupported
+        /// The underlying error text, when there is one.
+        case unreadable(String?)
     }
 
     /// Copies one picked file in under its own name. The security scope is
-    /// held only for the copy itself, synchronously, before any await. The
-    /// copy is abandoned after 30 seconds: a file still downloading from
-    /// iCloud must not stall the batch. A same-name, same-size file already
-    /// in the library is a duplicate and is not copied at all.
+    /// held only for the copy itself, synchronously, before any await.
+    ///
+    /// The copy goes through NSFileCoordinator and streams the bytes in,
+    /// instead of a bare `FileManager.copyItem`: a picked URL is often a
+    /// file-provider placeholder (iCloud, a cloud drive, another app's
+    /// folder in the Files picker), and a raw copyItem across that
+    /// boundary fails or reads nothing while a coordinated read asks the
+    /// provider to materialise the file first (build 10, chen 2026-11-27:
+    /// four builds of import failed on his phone). Streaming also keeps a
+    /// big FLAC from sitting whole in memory. The copy is abandoned after
+    /// 180 seconds (was 30: a big FLAC trickling down over a slow
+    /// connection needs longer than that), and the real error is kept so
+    /// the toast can say why instead of a bare "无法读取".
     private nonisolated static func copyIn(from url: URL, directory: URL, id: Int,
                                            existing: [LocalMusicEntry]) async -> PreparedImport {
         let sourceName = sanitizedFileName(url.lastPathComponent)
@@ -213,7 +262,10 @@ final class LocalMusicStore: ObservableObject {
         // Size inside the scope: outside it the read fails and the size
         // is 0, which breaks the name+size dedup.
         let sourceSize = (try? FileManager.default.attributesOfItem(atPath: url.path)[.size] as? Int) ?? 0
-        if existing.contains(where: { $0.fileName == sourceName && $0.fileSize == sourceSize }) {
+        // A size of 0 means the size could not be read at all (provider
+        // item not materialised yet); it must never count as a duplicate.
+        if sourceSize > 0,
+           existing.contains(where: { $0.fileName == sourceName && $0.fileSize == sourceSize }) {
             return .duplicate
         }
         let fileName = uniqueFileName(sourceName, taken: Set(existing.map(\.fileName)))
@@ -233,25 +285,72 @@ final class LocalMusicStore: ObservableObject {
                 try? await Task.sleep(nanoseconds: 500_000_000)
             }
         }
-        let copied = await withTimeout(30, fallback: false) {
+        final class ErrorBox: @unchecked Sendable { var error: Error? }
+        let box = ErrorBox()
+        let copied = await withTimeout(180, fallback: false) {
             do {
                 try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
-                try FileManager.default.copyItem(at: url, to: dest)
+                try coordinatedCopy(from: url, to: dest)
                 return true
-            } catch { return false }
+            } catch {
+                box.error = error
+                return false
+            }
         }
         guard copied else {
             // A timed-out copy may still be writing in the background;
             // removing the destination keeps a half-copied file out of the
             // library (the write lands in an unlinked inode and frees).
             try? FileManager.default.removeItem(at: dest)
-            return .unsupported
+            return .unreadable(box.error?.localizedDescription ?? "拷贝超时")
         }
         let size = (try? FileManager.default.attributesOfItem(atPath: dest.path)[.size] as? Int) ?? sourceSize
         let entry = LocalMusicEntry(id: id, fileName: fileName, fileSize: size,
                                     title: url.deletingPathExtension().lastPathComponent,
                                     artist: "", album: "", durationMS: 0, dateAdded: Date())
         return .ready(entry)
+    }
+
+    /// Streams one file in under coordination: the read asks the file
+    /// provider (iCloud, cloud drives, another app's folder) to
+    /// materialise the item first, which a bare copyItem does not do
+    /// reliably. Throws the underlying error so the caller can report it.
+    private nonisolated static func coordinatedCopy(from url: URL, to dest: URL) throws {
+        var coordinatorError: NSError?
+        var copyError: Error?
+        NSFileCoordinator().coordinate(readingItemAt: url, options: [], error: &coordinatorError) { readURL in
+            do {
+                guard let input = InputStream(url: readURL) else {
+                    throw CocoaError(.fileReadUnknown)
+                }
+                FileManager.default.createFile(atPath: dest.path, contents: nil)
+                guard let output = OutputStream(url: dest, append: false) else {
+                    throw CocoaError(.fileWriteUnknown)
+                }
+                input.open()
+                output.open()
+                defer { input.close(); output.close() }
+                var buffer = [UInt8](repeating: 0, count: 256 * 1024)
+                while input.hasBytesAvailable {
+                    let count = input.read(&buffer, maxLength: buffer.count)
+                    if count < 0 { throw input.streamError ?? CocoaError(.fileReadUnknown) }
+                    if count == 0 { break }
+                    var written = 0
+                    while written < count {
+                        let n = buffer.withUnsafeBytes {
+                            output.write($0.baseAddress!.assumingMemoryBound(to: UInt8.self) + written,
+                                         maxLength: count - written)
+                        }
+                        if n <= 0 { throw output.streamError ?? CocoaError(.fileWriteUnknown) }
+                        written += n
+                    }
+                }
+            } catch {
+                copyError = error
+            }
+        }
+        if let coordinatorError { throw coordinatorError }
+        if let copyError { throw copyError }
     }
 
     private nonisolated static func sanitizedFileName(_ name: String) -> String {
