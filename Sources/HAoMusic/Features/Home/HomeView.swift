@@ -585,7 +585,7 @@ struct HomeView: View {
                     .padding(.horizontal, Theme.Layout.contentInset - 10)
             }
         }
-        .task(id: (model.refreshNonce, model.regionalArea)) {
+        .task(id: "\(model.refreshNonce)-\(model.regionalArea.rawValue)") {
             await model.loadRegional(area: model.regionalArea)
         }
     }
@@ -606,7 +606,7 @@ struct HomeView: View {
                     .padding(.horizontal, Theme.Layout.contentInset - 10)
             }
         }
-        .task(id: (model.refreshNonce, account.likedArtists.map(\.id))) {
+        .task(id: "\(model.refreshNonce)-\(account.likedArtists.map(\.id))") {
             await model.loadLikedArtistSongs(artists: account.likedArtists, excluding: account.likedTrackIDs)
         }
     }
