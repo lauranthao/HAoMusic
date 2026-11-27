@@ -94,7 +94,7 @@ final class LocalMusicStore: ObservableObject {
         var nextID = (entries.map(\.id).min() ?? 0) - 1
         var newEntries: [LocalMusicEntry] = []
         importProgress = (0, urls.count)
-        for (index, url) in urls {
+        for (index, url) in urls.enumerated() {
             importProgress = (index, urls.count)
             let ext = url.pathExtension.lowercased()
             guard Self.supportedExtensions.contains(ext) else {
