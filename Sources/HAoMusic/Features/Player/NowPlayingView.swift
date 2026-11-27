@@ -170,11 +170,12 @@ struct NowPlayingView: View {
         #endif
         #if os(iOS)
         .onAppear {
-            showLyricsOnMobile = settings.nowPlayingMode == .immersive
+            // 打开播放器永远先显示封面那一面，不强制跳歌词；想看歌词点封面或歌词按钮。
+            showLyricsOnMobile = false
             showQueueOnMobile = false
         }
         .onChange(of: settings.nowPlayingMode) { _ in
-            showLyricsOnMobile = settings.nowPlayingMode == .immersive
+            showLyricsOnMobile = false
             showQueueOnMobile = false
         }
         .onChange(of: player.currentTrack?.id) { _ in
