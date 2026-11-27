@@ -83,6 +83,10 @@ enum OfflineQueueSelector {
                                store: OfflineStore, isCached: (Int) async -> Bool) async throws -> OfflineQueueSelection? {
         for (skipped, candidate) in candidates.enumerated() {
             try Task.checkCancellation()
+            // An imported local file is on this device by definition.
+            if LocalMusicStore.shared.isLocal(candidate.track.id) {
+                return .init(candidate: candidate, lease: nil, skipped: skipped)
+            }
             if let scope, let lease = try await store.acquire(accountScope: scope, trackID: candidate.track.id, preferredQuality: quality) {
                 if Task.isCancelled { try? await store.release(lease); throw CancellationError() }
                 return .init(candidate: candidate, lease: lease, skipped: skipped)

@@ -1118,6 +1118,11 @@ final class PlayerService: ObservableObject {
 
     private func resolveAndLoad(_ track: Track, generation: Int,
                                 localLease: OfflinePlaybackLease? = nil, resumeAt: TimeInterval = 0) async {
+        // An imported local file plays straight from disk — no account, no network.
+        if let localURL = LocalMusicStore.shared.fileURL(for: track.id) {
+            playLocalFile(localURL, lease: nil, for: track, generation: generation, from: resumeAt)
+            return
+        }
         // A downloaded copy beats the network, and is all there is without one.
         if let lease = await acquireOfflineLease(for: track, generation: generation, reusing: localLease) {
             playLocalFile(lease.url, lease: lease, for: track, generation: generation, from: resumeAt)
@@ -2730,6 +2735,8 @@ final class PlayerService: ObservableObject {
     }
 
     private func loadLyrics(for track: Track, generation: Int) async {
+        // Local files have no NetEase lyrics page; never spend a request on one.
+        if LocalMusicStore.shared.isLocal(track.id) { return }
         let scope = offlineAccountScope
         if let scope, let saved = await OfflineMetadataStore.shared.lyrics(trackID: track.id, scope: scope) {
             guard !Task.isCancelled, generation == resolveGeneration else { return }

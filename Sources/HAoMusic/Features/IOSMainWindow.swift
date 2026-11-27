@@ -839,6 +839,9 @@ struct IOSLibraryView: View {
                 Button { openDestination(.downloaded) } label: {
                     Label("我的下载", systemImage: "arrow.down.circle.fill")
                 }
+                Button { openDestination(.localMusic) } label: {
+                    Label("本地音乐", systemImage: "music.note")
+                }
                 Button { openDestination(.daily) } label: {
                     Label("每日推荐", systemImage: "calendar")
                 }

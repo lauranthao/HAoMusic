@@ -92,6 +92,26 @@ struct Track: Codable, Hashable, Identifiable {
         embeddedPrivilege = try? c.decode(TrackPrivilege.self, forKey: .privilege)
     }
 
+    /// A song imported from the user's own files. Negative ids never collide
+    /// with NetEase song ids, so the player can tell a local track apart
+    /// from a streamed one.
+    init(localID id: Int, name: String, artist: String, album: String, durationMS: Int) {
+        self.id = id
+        self.name = name
+        self.artists = artist.isEmpty ? [] : [ArtistRef(id: 0, name: artist)]
+        self.album = AlbumRef(id: 0, name: album, picUrl: nil)
+        self.durationMS = durationMS
+        self.alias = []
+        self.transNames = []
+        self.fee = 0
+        self.mvID = 0
+        self.trackNo = 0
+        self.disc = nil
+        self.noCopyright = false
+        self.isCloud = false
+        self.embeddedPrivilege = nil
+    }
+
     func encode(to encoder: Encoder) throws {
         var c = encoder.container(keyedBy: CodingKeys.self)
         try c.encode(id, forKey: .id)
