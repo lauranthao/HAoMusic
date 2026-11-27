@@ -103,6 +103,10 @@ struct PlaylistSummary: Codable, Hashable, Identifiable {
 
 struct TrackIDRef: Codable, Hashable {
     let id: Int
+    /// Last rank (1-based; 0 or absent = new entry). Only chart responses fill it.
+    var lr: Int? = nil
+    /// Growth ratio vs. the previous period (e.g. 0.25 = +25%). Only chart responses fill it.
+    var ratio: Double? = nil
 }
 
 struct PlaylistDetail: Codable, Hashable {

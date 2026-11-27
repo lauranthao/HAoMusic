@@ -45,9 +45,25 @@ final class HomeViewModel: ObservableObject {
     @Published var recommendPlaylists: [PlaylistSummary] = []
     @Published var radarPlaylists: [RadarPlaylist] = []
     @Published var toplists: [ToplistItem] = []
+    @Published var trendingSongs: [Track] = []
+    @Published var toplistTracks: [Int: [Track]] = [:]
+    @Published var toplistPreviousRanks: [Int: [Int: Int]] = [:]
+    @Published var toplistGrowthRatios: [Int: [Int: Double]] = [:]
+    @Published var failedToplistIDs: Set<Int> = []
+    private var toplistRequests: [Int: UUID] = [:]
+    private var toplistFetchedAt: [Int: Date] = [:]
     @Published var newAlbums: [AlbumSummary] = []
     @Published var topArtists: [ArtistSummary] = []
     @Published var dailyFirstCover: String?
+
+    /// Coda's home order: 飙升榜, 热歌榜, 新歌榜 first, the rest in API order.
+    static let homeToplistLeadingIDs = [19_723_756, 3_778_678, 3_779_629]
+
+    static func orderedToplists(_ charts: [ToplistItem]) -> [ToplistItem] {
+        let leading = homeToplistLeadingIDs.compactMap { id in charts.first { $0.id == id } }
+        let rest = charts.filter { !homeToplistLeadingIDs.contains($0.id) }
+        return leading + rest
+    }
 
     /// 地区热门: 全部 / 华语 / 欧美 / 日韩. 日韩 merges the Japanese (8) and
     /// Korean (16) lists, since the endpoint has no combined area.
@@ -165,14 +181,16 @@ final class HomeViewModel: ObservableObject {
 
         async let playlistsTask = fetchRecommendPlaylists(loggedIn: loggedIn)
         async let toplistsTask = try? MusicAPI.toplists()
+        async let trendingTask = loadTrendingSongs()
         async let albumsTask = try? MusicAPI.newAlbums(limit: 20)
         async let artistsTask = try? MusicAPI.topArtists()
 
         let playlists = await playlistsTask
         recommendPlaylists = playlists
-        toplists = (await toplistsTask ?? []).filter {
+        toplists = Self.orderedToplists((await toplistsTask ?? []).filter {
             [19_723_756, 3_779_629, 2_884_035, 3_778_678, 60198].contains($0.id)
-        }
+        })
+        trendingSongs = await trendingTask
         newAlbums = await albumsTask ?? []
         let artists = await artistsTask ?? []
         topArtists = Array(artists.shuffled().prefix(6))
@@ -192,10 +210,54 @@ final class HomeViewModel: ObservableObject {
         regionalCache = [:]
         regionalSongs = []
         regionalArea = .all
+        trendingSongs = []
+        toplistTracks = [:]
+        toplistPreviousRanks = [:]
+        toplistGrowthRatios = [:]
+        failedToplistIDs = []
+        toplistFetchedAt = [:]
         likedArtistKey = nil
         likedArtistSongs = []
         refreshNonce &+= 1
         await load(loggedIn: loggedIn)
+    }
+
+    /// 近期热播: the homepage-blocks trending slot first; when the homepage
+    /// carries no trending block, Coda's own fallback is the area-0 new-songs list.
+    private func loadTrendingSongs() async -> [Track] {
+        if let songs = try? await MusicAPI.homeDiscoveryTrending(), !songs.isEmpty {
+            return songs
+        }
+        return (try? await MusicAPI.homeTopSongs(areaID: 0)) ?? []
+    }
+
+    /// Cache previews and request additional charts only as they become visible.
+    func loadToplistTracks(id: Int, force: Bool = false, now: Date = Date()) async {
+        if !force {
+            guard toplistRequests[id] == nil else { return }
+            if let fetchedAt = toplistFetchedAt[id], now.timeIntervalSince(fetchedAt) >= 0,
+               now.timeIntervalSince(fetchedAt) < 1800 { return }
+        }
+        let request = UUID()
+        toplistRequests[id] = request
+        defer { if toplistRequests[id] == request { toplistRequests[id] = nil } }
+        do {
+            let tracks = try await MusicAPI.toplistPreviewTracks(id: id)
+            try Task.checkCancellation()
+            guard toplistRequests[id] == request else { return }
+            toplistGrowthRatios[id] = tracks.growthRatios
+            toplistPreviousRanks[id] = tracks.previousRanks
+            toplistTracks[id] = tracks.tracks
+            toplistFetchedAt[id] = now
+            failedToplistIDs.remove(id)
+        } catch {
+            if !Task.isCancelled, toplistRequests[id] == request { failedToplistIDs.insert(id) }
+        }
+    }
+
+    func retryToplistTracks(id: Int) async {
+        failedToplistIDs.remove(id)
+        await loadToplistTracks(id: id, force: true)
     }
 
     private func loadRadarPlaylists() async {
@@ -237,13 +299,14 @@ final class HomeViewModel: ObservableObject {
 struct HomeView: View {
     @EnvironmentObject private var account: AccountStore
     @EnvironmentObject private var player: PlayerService
+    @Environment(\.openDestination) private var openDestination
     @StateObject private var model = HomeViewModel.shared
     /// Measured width of the 新碟上架 shelf, for sizing its two rows from
     /// the fitted card size (see loadedBody). Falls back to the screen
     /// width until the first measurement lands.
     @State private var newAlbumsWidth: CGFloat = 0
-    /// Measured width of the song-pair shelves, for sizing each two-song
-    /// column (see songPairShelf). Same fallback.
+    /// Measured width of the song-column shelves, for sizing each song
+    /// column (see songColumnShelf). Same fallback.
     @State private var songShelfWidth: CGFloat = 0
 
     var body: some View {
@@ -320,19 +383,11 @@ struct HomeView: View {
             }
 
             if !model.toplists.isEmpty {
-                VStack(alignment: .leading, spacing: Theme.Layout.sectionHeaderSpacing) {
-                    SectionHeader(title: "排行榜")
-                        .padding(.horizontal, Theme.Layout.contentInset)
-                    VStack(alignment: .leading, spacing: 0) {
-                        ForEach(model.toplists) { toplist in
-                            NavigationLink(value: Destination.playlist(toplist.id)) {
-                                toplistRow(toplist)
-                            }
-                            .buttonStyle(.plain)
-                        }
-                    }
-                    .padding(.horizontal, Theme.Layout.contentInset)
-                }
+                HomeToplistsSection(model: model)
+            }
+
+            if !model.trendingSongs.isEmpty {
+                trendingSection
             }
 
             regionalSection
@@ -524,59 +579,23 @@ struct HomeView: View {
         .buttonStyle(.plain)
     }
 
-    private func toplistRow(_ toplist: ToplistItem) -> some View {
-        HStack(alignment: .center, spacing: 12) {
-            CachedAsyncImage(url: toplist.coverImgUrl?.resizedImageURL(256))
-                .frame(width: 64, height: 64)
-                .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
-            VStack(alignment: .leading, spacing: 3) {
-                Text(toplist.name)
-                    .font(.system(size: 16, weight: .bold))
-                    .foregroundStyle(.primary)
-                    .lineLimit(1)
-                if toplist.tracks.isEmpty {
-                    // No track previews: fall back to the update frequency.
-                    // Guarded so a missing frequency leaves no empty line.
-                    if let frequency = toplist.updateFrequency, !frequency.isEmpty {
-                        Text(frequency)
-                            .font(.system(size: 13))
-                            .foregroundStyle(.secondary)
-                            .lineLimit(1)
-                    }
-                } else {
-                    ForEach(Array(toplist.tracks.prefix(3).enumerated()), id: \.offset) { index, track in
-                        Text("\(index + 1) \(track.first) - \(track.second)")
-                            .font(.system(size: 13))
-                            .foregroundStyle(.secondary)
-                            .lineLimit(1)
-                    }
-                }
-            }
-            Spacer()
-            Image(systemName: "chevron.right")
-                .font(.caption)
-                .foregroundStyle(.tertiary)
-        }
-        .padding(.vertical, 12)
-        .contentShape(Rectangle())
-    }
+    // MARK: - 地区热门 / 喜欢的歌手推荐 / 近期热播
 
-    // MARK: - 地区热门 / 喜欢的歌手推荐
-
-    /// Two songs per column, columns scrolling horizontally — the same shape
+    /// Songs per column, columns scrolling horizontally — the same shape
     /// as 新碟上架 (two album cards per column). Each column is one
-    /// TrackListView of two tracks, so rows keep their play, download and
-    /// menu behaviour. A column is most of the content width with the next
-    /// one peeking in, so the shelf reads as swipeable.
-    private func songPairShelf(tracks: [Track]) -> some View {
-        let pairs = stride(from: 0, to: tracks.count, by: 2)
-            .map { Array(tracks[$0..<min($0 + 2, tracks.count)]) }
+    /// TrackListView, so rows keep their play, download and menu behaviour.
+    /// A column is most of the content width with the next one peeking in,
+    /// so the shelf reads as swipeable. Coda's song shelves stack 3 rows
+    /// per column; the regional and liked-artist shelves keep 2.
+    private func songColumnShelf(tracks: [Track], rowsPerColumn: Int = 2) -> some View {
+        let columns = stride(from: 0, to: tracks.count, by: rowsPerColumn)
+            .map { Array(tracks[$0..<min($0 + rowsPerColumn, tracks.count)]) }
         let width = songShelfWidth > 0 ? songShelfWidth : UIScreen.main.bounds.width
         let columnWidth = max(240, (width - Theme.Layout.contentInset * 2) * 0.86)
         return ScrollView(.horizontal, showsIndicators: false) {
             LazyHStack(alignment: .top, spacing: 16) {
-                ForEach(pairs.indices, id: \.self) { index in
-                    TrackListView(tracks: pairs[index], style: .compact, source: .none)
+                ForEach(columns.indices, id: \.self) { index in
+                    TrackListView(tracks: columns[index], style: .compact, source: .none)
                         .frame(width: columnWidth)
                 }
             }
@@ -589,6 +608,22 @@ struct HomeView: View {
             }
         )
         .onPreferenceChange(SongShelfWidthKey.self) { songShelfWidth = $0 }
+    }
+
+    /// 近期热播 (Coda's trending slot): three songs per column, swiping
+    /// horizontally like the other song shelves. The header opens the full list.
+    private var trendingSection: some View {
+        VStack(alignment: .leading, spacing: Theme.Layout.sectionHeaderSpacing) {
+            SectionHeader(title: "近期热播") {
+                openDestination(.trending(model.trendingSongs))
+            }
+            .padding(.horizontal, Theme.Layout.contentInset)
+            Rectangle()
+                .fill(Color.primary.opacity(0.08))
+                .frame(height: 0.5)
+                .padding(.horizontal, Theme.Layout.contentInset)
+            songColumnShelf(tracks: Array(model.trendingSongs.prefix(30)), rowsPerColumn: 3)
+        }
     }
 
     private var regionalSection: some View {
@@ -619,7 +654,7 @@ struct HomeView: View {
                 }
                 .padding(.vertical, 20)
             } else if !model.regionalSongs.isEmpty {
-                songPairShelf(tracks: Array(model.regionalSongs.prefix(10)))
+                songColumnShelf(tracks: Array(model.regionalSongs.prefix(10)))
             }
         }
         .task(id: "\(model.refreshNonce)-\(model.regionalArea.rawValue)") {
@@ -639,7 +674,7 @@ struct HomeView: View {
                 }
                 .padding(.vertical, 20)
             } else if !model.likedArtistSongs.isEmpty {
-                songPairShelf(tracks: Array(model.likedArtistSongs.prefix(10)))
+                songColumnShelf(tracks: Array(model.likedArtistSongs.prefix(10)))
             }
         }
         .task(id: "\(model.refreshNonce)-\(account.likedArtists.map(\.id))") {
@@ -784,5 +819,189 @@ struct CoverCardBody: View {
             CachedAsyncImage(url: coverURL)
                 .frame(width: size, height: size)
         }
+    }
+}
+
+/// Coda's home ranking section: horizontally swiping chart cards, each with
+/// its cover header and ten ranked rows. Charts load their tracks lazily as
+/// their card appears; the header opens the all-charts page.
+struct HomeToplistsSection: View {
+    @ObservedObject var model: HomeViewModel
+    @Environment(\.openDestination) private var openDestination
+    private let player = PlayerService.shared
+
+    #if os(iOS)
+    @ScaledMetric(relativeTo: .body) private var chartRowHeight: CGFloat = 64
+    #else
+    private var chartRowHeight: CGFloat { 52 }
+    #endif
+
+    /// Divider plus the space above and below it.
+    private var dividerBlockHeight: CGFloat { 6 * 2 + 0.5 }
+
+    /// Chart header row, its divider block, then ten song rows 1pt apart.
+    private var toplistHeight: CGFloat {
+        chartRowHeight + dividerBlockHeight + chartRowHeight * 10 + 9
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: Theme.Layout.sectionHeaderSpacing) {
+            SectionHeader(title: "排行榜") {
+                openDestination(.toplists)
+            }
+            .padding(.horizontal, Theme.Layout.contentInset)
+
+            GeometryReader { geometry in
+                let available = geometry.size.width - 2 * Theme.Layout.contentInset
+                #if os(iOS)
+                let peek: CGFloat = UIDevice.current.userInterfaceIdiom == .phone && model.toplists.count > 1 ? 20 : 0
+                #else
+                let peek: CGFloat = 0
+                #endif
+                let width = max(1, min(357, available - peek))
+                ScrollView(.horizontal, showsIndicators: false) {
+                    LazyHStack(alignment: .top, spacing: 16) {
+                        ForEach(model.toplists) { chart in
+                            HomeToplistPreview(
+                                chart: chart,
+                                rowHeight: chartRowHeight,
+                                reservedHeight: toplistHeight,
+                                tracks: model.toplistTracks[chart.id],
+                                previousRanks: model.toplistPreviousRanks[chart.id] ?? [:],
+                                growthRatios: model.toplistGrowthRatios[chart.id] ?? [:],
+                                failed: model.failedToplistIDs.contains(chart.id),
+                                onRetry: { Task { await model.retryToplistTracks(id: chart.id) } },
+                                onOpen: { openDestination(.playlist(chart.id)) },
+                                onPlay: { track, tracks in
+                                    player.play(tracks: tracks, source: .playlist(chart.id), startAt: track,
+                                                context: .playlist(id: chart.id, name: chart.name))
+                                }
+                            )
+                            .equatable()
+                            .frame(width: width)
+                            .task { await model.loadToplistTracks(id: chart.id) }
+                        }
+                    }
+                    .padding(.horizontal, Theme.Layout.contentInset)
+                }
+            }
+            .frame(height: model.toplists.isEmpty ? 0 : toplistHeight)
+        }
+    }
+}
+
+/// Equatable on its data only: one chart finishing its load must not rebuild
+/// the ten rows of every other chart.
+private struct HomeToplistPreview: View, Equatable {
+    static func == (lhs: Self, rhs: Self) -> Bool {
+        lhs.chart.id == rhs.chart.id && lhs.chart.name == rhs.chart.name
+            && lhs.chart.coverImgUrl == rhs.chart.coverImgUrl
+            && lhs.chart.updateFrequency == rhs.chart.updateFrequency
+            && lhs.rowHeight == rhs.rowHeight && lhs.reservedHeight == rhs.reservedHeight
+            && lhs.failed == rhs.failed
+            && lhs.tracks?.map(\.id) == rhs.tracks?.map(\.id)
+            && lhs.previousRanks == rhs.previousRanks && lhs.growthRatios == rhs.growthRatios
+    }
+
+    let chart: ToplistItem
+    let rowHeight: CGFloat
+    let reservedHeight: CGFloat
+    let tracks: [Track]?
+    let previousRanks: [Int: Int]
+    let growthRatios: [Int: Double]
+    let failed: Bool
+    let onRetry: () -> Void
+    let onOpen: () -> Void
+    let onPlay: (Track, [Track]) -> Void
+
+    static let dividerBlockHeight: CGFloat = 6 * 2 + 0.5
+
+    private var contentMinHeight: CGFloat { reservedHeight - rowHeight - Self.dividerBlockHeight }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            // The chart header is laid out exactly like a song row.
+            Button(action: onOpen) {
+                HStack(spacing: 12) {
+                    CachedAsyncImage(url: chart.coverImgUrl?.resizedImageURL(160), animated: false)
+                        .frame(width: 48, height: 48)
+                        .clipShape(RoundedRectangle(cornerRadius: Theme.Radius.small, style: .continuous))
+                        .accessibilityHidden(true)
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text(chart.name)
+                            .font(.system(size: 13, weight: .medium))
+                            .lineLimit(1)
+                        if let frequency = chart.updateFrequency, !frequency.isEmpty {
+                            Text(frequency)
+                                .font(.system(size: 11.5))
+                                .foregroundStyle(.secondary)
+                                .lineLimit(1)
+                        }
+                    }
+                    Spacer(minLength: 8)
+                    Image(systemName: "chevron.right")
+                        .font(.system(size: 13, weight: .semibold))
+                        .foregroundStyle(.tertiary)
+                        .frame(width: TrackRow.chartRankColumnWidth)
+                }
+                .padding(.horizontal, 10)
+                .foregroundStyle(.primary)
+                .frame(height: rowHeight)
+                .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .padding(.bottom, 6)
+            Rectangle()
+                .fill(Color.primary.opacity(0.08))
+                .frame(height: 0.5)
+                .padding(.horizontal, 10)
+                .padding(.bottom, 6)
+            if let tracks, !tracks.isEmpty {
+                LazyVStack(spacing: 1) {
+                    ForEach(Array(tracks.prefix(10).enumerated()), id: \.element.id) { index, track in
+                        TrackRow(track: track, index: index + 1, style: .compact,
+                                 chartRank: index + 1, previousChartRank: previousRanks[track.id],
+                                 chartGrowthRatio: growthRatios[track.id]) {
+                            onPlay(track, tracks)
+                        }
+                        .accessibilityLabel("第 \(index + 1) 名，\(track.name)，\(track.artistNames)")
+                    }
+                }
+            } else if failed {
+                VStack(spacing: 12) {
+                    Text("榜单歌曲加载失败").foregroundStyle(.secondary)
+                    Button("重试", action: onRetry).frame(minHeight: 44)
+                }
+                .frame(maxWidth: .infinity, minHeight: contentMinHeight)
+            } else if tracks != nil {
+                Text("暂无榜单歌曲")
+                    .foregroundStyle(.secondary)
+                    .frame(maxWidth: .infinity, minHeight: contentMinHeight)
+            } else {
+                ProgressView("正在加载榜单")
+                    .frame(maxWidth: .infinity, minHeight: contentMinHeight)
+            }
+        }
+    }
+}
+
+/// Full list for the 近期热播 shelf.
+struct TrendingSongsView: View {
+    let tracks: [Track]
+
+    var body: some View {
+        TrackListScrollView(trackIDs: tracks.map(\.id)) {
+            EmptyView()
+        } rows: { layout in
+            TrackListView(tracks: tracks, source: .none, layout: layout)
+                .padding(.horizontal, Theme.Layout.contentInset - 10)
+        } footer: {
+            PlayerClearanceSpacer()
+        }
+        .navigationTitle("近期热播")
+        .detailArtworkBackground(tracks.first?.album.picUrl)
+        #if os(iOS)
+        .navigationBarTitleDisplayMode(.inline)
+        #endif
     }
 }

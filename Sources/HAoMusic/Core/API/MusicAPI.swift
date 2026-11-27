@@ -497,6 +497,76 @@ enum MusicAPI {
         try await eapi(ToplistResponse.self, "/toplist").list
     }
 
+    /// Fetch only the first ten chart entries while preserving chart order.
+    /// Previous ranks come from trackIds[].lr (last rank, 1-based; 0 = new),
+    /// growth ratios from trackIds[].ratio — the same fields Coda reads.
+    static func toplistPreviewTracks(id: Int) async throws -> (tracks: [Track], previousRanks: [Int: Int], growthRatios: [Int: Double]) {
+        guard id > 0 else { throw MusicAPIError.decoding("无效的榜单") }
+        let response = try await eapi(PlaylistDetailResponse.self, "/v6/playlist/detail",
+                                      ["id": id, "n": 10, "s": 0])
+        let ids = Array(response.playlist.trackIds.prefix(10).map(\.id))
+        let tracks = Array(response.playlist.tracks.prefix(10))
+        let previousRanks = Dictionary(response.playlist.trackIds.compactMap { ref in
+            ref.lr.map { (ref.id, $0 >= 0 ? $0 + 1 : 0) }
+        }, uniquingKeysWith: { first, _ in first })
+        let growthRatios = Dictionary(response.playlist.trackIds.compactMap { ref in
+            ref.ratio.map { (ref.id, $0) }
+        }, uniquingKeysWith: { first, _ in first })
+        if ids.isEmpty { return (tracks, previousRanks, growthRatios) }
+        let byID = Dictionary(tracks.map { ($0.id, $0) }, uniquingKeysWith: { first, _ in first })
+        if ids.allSatisfy({ byID[$0] != nil }) {
+            return (ids.compactMap { byID[$0] }, previousRanks, growthRatios)
+        }
+        let full = try await songDetails(ids: ids)
+        let fullByID = Dictionary(full.songs.map { ($0.id, $0) }, uniquingKeysWith: { first, _ in first })
+        return (ids.compactMap { fullByID[$0] }, previousRanks, growthRatios)
+    }
+
+    /// 近期热播 (Coda's trending slot): songs from the homepage blocks API.
+    /// The block is labelled 近期云村热播 / 近期热播 (or HOMEPAGE_BLOCK_STYLE_RCMD).
+    /// Returns [] when the homepage carries no trending block; the caller falls
+    /// back to homeTopSongs(areaID: 0), Coda's own fallback.
+    static func homeDiscoveryTrending() async throws -> [Track] {
+        let data = try await client.eapi("/homepage/block/page", ["refresh": false])
+        guard let root = try JSONSerialization.jsonObject(with: data) as? [String: Any],
+              let payload = root["data"] as? [String: Any],
+              let blocks = payload["blocks"] as? [[String: Any]] else {
+            throw MusicAPIError.decoding("Missing homepage blocks")
+        }
+        if let code = root["code"] as? Int, code != 200 {
+            if code == 301 { throw MusicAPIError.needLogin }
+            throw MusicAPIError.business(code: code, message: root["message"] as? String)
+        }
+        func title(_ ui: [String: Any]?, _ key: String) -> String? {
+            (ui?[key] as? [String: Any])?["title"] as? String
+        }
+        var songs: [Track] = []
+        var songIDs = Set<Int>()
+        for block in blocks {
+            let ui = block["uiElement"] as? [String: Any]
+            let creatives = block["creatives"] as? [[String: Any]] ?? []
+            let creativeUI = creatives.first?["uiElement"] as? [String: Any]
+            let label = (title(ui, "subTitle") ?? title(ui, "mainTitle") ?? title(creativeUI, "mainTitle") ?? "")
+                .filter { !$0.isWhitespace }
+            let code = (block["blockCode"] as? String ?? "").uppercased()
+            guard label.contains("近期云村热播") || label.contains("近期热播")
+                    || code == "HOMEPAGE_BLOCK_STYLE_RCMD" else { continue }
+            // First nonempty trending block wins.
+            for resource in creatives.flatMap({ $0["resources"] as? [[String: Any]] ?? [] }) {
+                guard resource["valid"] as? Bool != false else { continue }
+                guard (resource["resourceType"] as? String ?? "").lowercased() == "song" else { continue }
+                let ext = resource["resourceExtInfo"] as? [String: Any] ?? [:]
+                guard let object = (ext["songData"] ?? ext["song"]) as? [String: Any],
+                      let songData = try? JSONSerialization.data(withJSONObject: object),
+                      let song = try? JSONDecoder().decode(Track.self, from: songData),
+                      song.id > 0, !song.name.isEmpty, songIDs.insert(song.id).inserted else { continue }
+                songs.append(song)
+            }
+            if !songs.isEmpty { break }
+        }
+        return songs
+    }
+
     struct PlaylistCreateResponse: Decodable {
         let code: Int
         let id: Int?

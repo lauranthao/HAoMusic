@@ -125,6 +125,7 @@ struct ArtistDetailView: View {
         #else
         .navigationBarTitleDisplayMode(.inline)
         #endif
+        .detailArtworkBackground(artist?.picUrl)
         .task(id: artistID) {
             await load()
         }

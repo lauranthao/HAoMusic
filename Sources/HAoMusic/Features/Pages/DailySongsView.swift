@@ -42,6 +42,7 @@ struct DailySongsView: View {
             PlayerClearanceSpacer()
         }
         .navigationTitle("每日推荐")
+        .detailArtworkBackground(tracks.first?.album.picUrl)
         .task {
             if tracks.isEmpty {
                 await load()

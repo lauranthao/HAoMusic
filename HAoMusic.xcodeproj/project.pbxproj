@@ -420,7 +420,11 @@
 		DA85C591DECEC3AA71031B5B = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VinylTurntableView.swift; sourceTree = "<group>"; };
 		9704931D2D838091CE0D250E = {isa = PBXBuildFile; fileRef = DA85C591DECEC3AA71031B5B; };
 		84607F9D76A9E328A5A5E733 = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CommentShareCard.swift; sourceTree = "<group>"; };
+		7A4FE9BF415EB90E5F36D108 = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DetailArtworkBackground.swift; sourceTree = "<group>"; };
+		8A384FDB3101B8A87529698E = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DetailArtworkMath.swift; sourceTree = "<group>"; };
 		DBFA5766B6D0EFD81BE01BEA = {isa = PBXBuildFile; fileRef = 84607F9D76A9E328A5A5E733; };
+		AAA36A8986A571A9A401E7A7 = {isa = PBXBuildFile; fileRef = 7A4FE9BF415EB90E5F36D108; };
+		DC31B221EC2477010850F797 = {isa = PBXBuildFile; fileRef = 8A384FDB3101B8A87529698E; };
 		E766DBC11DF56CD2A6E27227 = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DownloadProgressIcon.swift; sourceTree = "<group>"; };
 		2EE124716A117E5B39217EC0 = {isa = PBXBuildFile; fileRef = E766DBC11DF56CD2A6E27227; };
 		91BD5728C35B38A7A2CBFF44 = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ListSearch.swift; sourceTree = "<group>"; };
@@ -852,6 +856,8 @@
 			isa = PBXGroup;
 			children = (
 				84607F9D76A9E328A5A5E733,
+				7A4FE9BF415EB90E5F36D108,
+				8A384FDB3101B8A87529698E,
 				E766DBC11DF56CD2A6E27227,
 				91BD5728C35B38A7A2CBFF44,
 				D338676619CCB38E370C1309,
@@ -1200,6 +1206,8 @@
 				91AD68A1325AA9CF3EFF3160,
 				9704931D2D838091CE0D250E,
 				DBFA5766B6D0EFD81BE01BEA,
+				AAA36A8986A571A9A401E7A7,
+				DC31B221EC2477010850F797,
 				2EE124716A117E5B39217EC0,
 				68D7557B8841855BC7FFA1AA,
 				B7317D343048BD4C0CD07182,

@@ -102,6 +102,7 @@ enum Destination: Hashable {
     case librarySection(LibrarySection)
     case daily
     case toplists
+    case trending([Track])
     case recents
     case collections(CollectionTab)
     case cloud
@@ -148,6 +149,8 @@ struct DestinationsModifier: ViewModifier {
                     DailySongsView()
                 case .toplists:
                     ToplistsView()
+                case .trending(let tracks):
+                    TrendingSongsView(tracks: tracks)
                 case .recents:
                     RecentsView()
                 case .collections(let tab):

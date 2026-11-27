@@ -113,6 +113,7 @@ struct AlbumDetailView: View {
         #else
         .navigationBarTitleDisplayMode(.inline)
         #endif
+        .detailArtworkBackground(album?.picUrl)
     }
 
     private func load() async {

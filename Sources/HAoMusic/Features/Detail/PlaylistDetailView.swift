@@ -117,6 +117,7 @@ struct PlaylistDetailView: View {
         .navigationBarTitleDisplayMode(.inline)
         .scrollDismissesKeyboard(.interactively)
         #endif
+        .detailArtworkBackground(model.detail?.coverImgUrl)
     }
 
     #if os(macOS)

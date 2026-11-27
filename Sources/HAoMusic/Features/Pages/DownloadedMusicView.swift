@@ -46,7 +46,9 @@ struct DownloadedMusicView: View {
         }
         // NavigationStack keeps its previous page behind this destination.
         // Give the music page a surface so transparent scroll content cannot
-        // show the previous list through a saved-collection page.
+        // show the previous list through a saved-collection page. The artwork
+        // tint goes on before it, so the opaque color sits behind the tint.
+        .detailArtworkBackground(visible.first?.album.picUrl)
         .background(Platform.windowBackgroundColor)
         .navigationTitle(collection?.name ?? String(localized: "已下载"))
         #if os(iOS)

@@ -71,6 +71,7 @@ struct RecentsView: View {
             PlayerClearanceSpacer()
         }
         .navigationTitle("最近播放")
+        .detailArtworkBackground(records.first?.song.album.picUrl)
         .task(id: mode) {
             await load()
         }
@@ -160,6 +161,7 @@ struct CloudView: View {
     var body: some View {
         ScrollViewReader { proxy in
             list
+                .detailArtworkBackground(model.filteredTracks.first?.album.picUrl)
                 .navigationTitle(isSearchActive ? String(localized: "搜索云盘歌曲") : String(localized: "音乐云盘"))
                 #if os(iOS)
                 .scrollDismissesKeyboard(.interactively)

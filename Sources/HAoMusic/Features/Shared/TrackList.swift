@@ -19,6 +19,9 @@ enum RecommendationContext {
 // MARK: - Row
 
 struct TrackRow: View {
+    /// Shared with the home chart header to keep its disclosure on the rank centerline.
+    static let chartRankColumnWidth: CGFloat = 52
+
     let track: Track
     let index: Int
     var style: TrackRowStyle = .full
@@ -29,6 +32,11 @@ struct TrackRow: View {
     var removableFromPlaylistID: Int?
     var onRemoved: (() -> Void)?
     var onRecommendationReplaced: ((Track) -> Void)?
+    /// Chart rank (1-based). Set on ranking rows: the leading index hides and
+    /// the trailing column shows the rank + movement instead of the duration.
+    var chartRank: Int?
+    var chartGrowthRatio: Double?
+    var previousChartRank: Int?
     let onPlay: () -> Void
 
     @EnvironmentObject private var player: PlayerService
@@ -51,7 +59,9 @@ struct TrackRow: View {
 
     init(track: Track, index: Int, style: TrackRowStyle = .full, playability: TrackPlayability = .playable,
          trailingText: String? = nil, removableFromPlaylistID: Int? = nil, onRemoved: (() -> Void)? = nil,
-         onRecommendationReplaced: ((Track) -> Void)? = nil, onPlay: @escaping () -> Void) {
+         onRecommendationReplaced: ((Track) -> Void)? = nil,
+         chartRank: Int? = nil, previousChartRank: Int? = nil, chartGrowthRatio: Double? = nil,
+         onPlay: @escaping () -> Void) {
         self.track = track
         self.index = index
         self.style = style
@@ -60,6 +70,9 @@ struct TrackRow: View {
         self.removableFromPlaylistID = removableFromPlaylistID
         self.onRemoved = onRemoved
         self.onRecommendationReplaced = onRecommendationReplaced
+        self.chartRank = chartRank
+        self.previousChartRank = previousChartRank
+        self.chartGrowthRatio = chartGrowthRatio
         self.onPlay = onPlay
         _downloadState = ObservedObject(wrappedValue: DownloadManager.shared.trackState(for: track.id))
     }
@@ -73,6 +86,8 @@ struct TrackRow: View {
     private var showsArtwork: Bool { style != .albumTrack }
 
     private var hidesLeadingIndex: Bool {
+        // Chart rows show the rank in the trailing column, not up front.
+        if chartRank != nil { return true }
         #if os(iOS)
         return isCompact && showsArtwork
         #else
@@ -115,7 +130,15 @@ struct TrackRow: View {
                         VIPBadge()
                     }
                 }
-                artistLinks
+                if chartRank != nil, !track.album.name.isEmpty {
+                    // Chart rows read "artist - album", like Coda's chart rows.
+                    Text("\(track.artistNames) - \(track.album.name)")
+                        .font(isCompact ? .footnote : .system(size: 11.5))
+                        .foregroundStyle(.secondary)
+                        .lineLimit(1)
+                } else {
+                    artistLinks
+                }
             }
             .frame(maxWidth: .infinity, alignment: .leading)
 
@@ -326,21 +349,83 @@ struct TrackRow: View {
             #else
             TrackDownloadButton(track: track, isVisible: false)
             #endif
-            let liked = account.isLiked(track.id)
-            Button {
-                Task { await account.toggleLike(trackID: track.id) }
-            } label: {
-                Image(systemName: liked ? "heart.fill" : "heart")
-                    .font(.system(size: 12))
-                    .foregroundStyle(liked ? AnyShapeStyle(Theme.accent) : AnyShapeStyle(.secondary))
-            }
-            .buttonStyle(.pressable)
-            .opacity(liked || isHovering ? 1 : 0)
+            if let chartRank {
+                chartRankColumn(rank: chartRank)
+            } else {
+                let liked = account.isLiked(track.id)
+                Button {
+                    Task { await account.toggleLike(trackID: track.id) }
+                } label: {
+                    Image(systemName: liked ? "heart.fill" : "heart")
+                        .font(.system(size: 12))
+                        .foregroundStyle(liked ? AnyShapeStyle(Theme.accent) : AnyShapeStyle(.secondary))
+                }
+                .buttonStyle(.pressable)
+                .opacity(liked || isHovering ? 1 : 0)
 
-            Text(Formatters.duration(track.duration))
-                .font(.system(size: 11.5).monospacedDigit())
+                Text(Formatters.duration(track.duration))
+                    .font(.system(size: 11.5).monospacedDigit())
+                    .foregroundStyle(.tertiary)
+                    .frame(width: 36, alignment: .trailing)
+            }
+        }
+    }
+
+    /// Ranking column: the rank number (red for the top 3, gray after) with
+    /// the movement underneath — growth %, NEW, rank change, or —.
+    private func chartRankColumn(rank: Int) -> some View {
+        ZStack(alignment: .center) {
+            if isCurrent {
+                PlayingIndicator(animating: player.isPlaying && !player.showNowPlaying)
+            } else {
+                VStack(alignment: .center, spacing: 3) {
+                    Text(String(rank))
+                        .font(.system(size: 13, weight: .medium).monospacedDigit())
+                        .foregroundStyle(rank <= 3 ? Color.red : Color.secondary)
+                    chartMovement(rank: rank)
+                }
+            }
+        }
+        .frame(width: Self.chartRankColumnWidth, alignment: .center)
+    }
+
+    @ViewBuilder
+    private func chartMovement(rank: Int) -> some View {
+        if let ratio = chartGrowthRatio, ratio.isFinite {
+            HStack(spacing: 2) {
+                if ratio != 0 {
+                    Image(systemName: ratio > 0 ? "arrowtriangle.up.fill" : "arrowtriangle.down.fill")
+                        .font(.system(size: 7))
+                }
+                Text("\(abs(ratio).formatted(.number.precision(.fractionLength(0...1))))%")
+                    .font(.system(size: 10).monospacedDigit())
+            }
+            .foregroundStyle(ratio > 0 ? Color.red : ratio < 0 ? Color.green : Color.secondary)
+            .accessibilityLabel("涨跌幅 \(ratio.formatted())%")
+        } else if let previousChartRank {
+            if previousChartRank <= 0 {
+                Text("NEW")
+                    .font(.system(size: 9, weight: .semibold))
+                    .foregroundStyle(Theme.accent)
+                    .accessibilityLabel("新上榜")
+            } else {
+                let change = previousChartRank - rank
+                HStack(spacing: 2) {
+                    if change != 0 {
+                        Image(systemName: change > 0 ? "arrowtriangle.up.fill" : "arrowtriangle.down.fill")
+                            .font(.system(size: 7))
+                    }
+                    Text(change == 0 ? "—" : String(abs(change)))
+                        .font(.system(size: 10).monospacedDigit())
+                }
+                .foregroundStyle(change > 0 ? Color.red : change < 0 ? Color.green : Color.secondary)
+                .accessibilityLabel(change == 0 ? "排名不变" : "\(change > 0 ? "上升" : "下降") \(abs(change)) 名")
+            }
+        } else {
+            Text("—")
+                .font(.system(size: 10))
                 .foregroundStyle(.tertiary)
-                .frame(width: 36, alignment: .trailing)
+                .accessibilityLabel("暂无排名变化数据")
         }
     }
 
