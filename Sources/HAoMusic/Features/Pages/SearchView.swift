@@ -54,12 +54,6 @@ final class SearchViewModel: ObservableObject {
 
     var isLoading: Bool { !loadingTabs.isEmpty }
 
-    /// The day's promoted search term (NetEase's default keyword): the only
-    /// hot word the NetEase API exposes without login. The hot list endpoint
-    /// (/search/hot/detail) answers 404 through the app's eapi client, and
-    /// there is no weapi signer in the codebase, so this is the hot section.
-    @Published var hotKeyword: String?
-
     init(query: String) {
         self.query = query
         // A query this page was opened with (macOS toolbar submit) is a
@@ -75,13 +69,6 @@ final class SearchViewModel: ObservableObject {
         guard !trimmed.isEmpty else { return }
         SearchHistory.shared.record(trimmed)
         setQuery(trimmed)
-    }
-
-    func loadHotKeyword() async {
-        guard hotKeyword == nil else { return }
-        if let keyword = try? await MusicAPI.searchDefaultKeyword(), !keyword.isEmpty {
-            hotKeyword = keyword
-        }
     }
 
     func setQuery(_ newQuery: String) {
@@ -284,25 +271,7 @@ struct SearchView: View {
                 }
             }
 
-            if let hot = model.hotKeyword {
-                VStack(alignment: .leading, spacing: 12) {
-                    Text("热门搜索")
-                        .font(.title2.weight(.semibold))
-                        .padding(.horizontal, Theme.Layout.contentInset)
-                    ScrollView(.horizontal, showsIndicators: false) {
-                        HStack(spacing: 8) {
-                            Spacer().frame(width: Theme.Layout.contentInset - 8)
-                            Button { runSearch(hot) } label: { Text(hot) }
-                                .buttonStyle(.chip(isSelected: false))
-                            Spacer().frame(width: Theme.Layout.contentInset - 8)
-                        }
-                        .padding(.vertical, 2)
-                    }
-                    .shelfEdgeClip()
-                }
-            }
-
-            if history.records.isEmpty && model.hotKeyword == nil {
+            if history.records.isEmpty {
                 VStack(spacing: 16) {
                     Image(systemName: "magnifyingglass")
                         .font(.system(size: 48, weight: .light))
@@ -320,7 +289,6 @@ struct SearchView: View {
             }
         }
         .padding(.top, 12)
-        .task { await model.loadHotKeyword() }
     }
 
     private var currentEmpty: Bool {
