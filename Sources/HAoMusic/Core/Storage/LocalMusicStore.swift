@@ -69,7 +69,7 @@ final class LocalMusicStore: ObservableObject {
         guard let directory else { return ImportResult() }
         var result = ImportResult()
         var nextID = (entries.map(\.id).min() ?? 0) - 1
-        let knownMD5s = Set(entries.map(\.md5))
+        var seenMD5s = Set(entries.map(\.md5))
         var newEntries: [LocalMusicEntry] = []
         for url in urls {
             guard Self.supportedExtensions.contains(url.pathExtension.lowercased()) else {
@@ -77,9 +77,10 @@ final class LocalMusicStore: ObservableObject {
                 continue
             }
             switch await Self.prepareImport(from: url, directory: directory, id: nextID,
-                                           knownMD5s: knownMD5s) {
+                                           knownMD5s: seenMD5s) {
             case .ready(let entry):
                 nextID -= 1
+                seenMD5s.insert(entry.md5)
                 newEntries.append(entry)
                 result.imported += 1
             case .duplicate:
@@ -136,22 +137,18 @@ final class LocalMusicStore: ObservableObject {
         case unsupported
     }
 
-    /// Reads the source file (MD5 + tags) and copies it in. Runs off the main
-    /// actor: a big FLAC must not stall the UI while it copies.
+    /// Copies the picked file in first, then reads its tags from our own
+    /// copy. The file picker's security scope is held only for the copy
+    /// itself, synchronously, before any await: the old order read the
+    /// source through AVAsset after an await, and AVAsset's reader threads
+    /// run outside the scope the picker granted — so the duration load
+    /// failed and every file came back unsupported (build 5, chen 2026-11-27).
+    /// A copy that turns out to be a duplicate, unreadable or duration-less
+    /// is deleted again, so a failed import leaves nothing behind.
     private nonisolated static func prepareImport(from url: URL, directory: URL, id: Int,
                                                   knownMD5s: Set<String>) async -> PreparedImport {
-        guard url.startAccessingSecurityScopedResource() else { return .unsupported }
-        defer { url.stopAccessingSecurityScopedResource() }
-        guard let md5 = md5(of: url), !md5.isEmpty else { return .unsupported }
-        if knownMD5s.contains(md5) { return .duplicate }
-        let asset = AVURLAsset(url: url)
-        guard let duration = try? await asset.load(.duration),
-              duration.seconds.isFinite, duration.seconds > 0 else { return .unsupported }
-        let metadata = try? await asset.load(.commonMetadata)
-        let title = metadataValue(.commonIdentifierTitle, in: metadata)
-            ?? url.deletingPathExtension().lastPathComponent
-        let artist = metadataValue(.commonIdentifierArtist, in: metadata) ?? ""
-        let album = metadataValue(.commonIdentifierAlbumName, in: metadata) ?? ""
+        let scoped = url.startAccessingSecurityScopedResource()
+        defer { if scoped { url.stopAccessingSecurityScopedResource() } }
         let fileName = "\(UUID().uuidString).\(url.pathExtension.lowercased())"
         let dest = directory.appendingPathComponent(fileName)
         do {
@@ -160,6 +157,27 @@ final class LocalMusicStore: ObservableObject {
         } catch {
             return .unsupported
         }
+        // From here on the file is ours: no scope needed, whatever thread
+        // the awaits resume on.
+        guard let md5 = md5(of: dest), !md5.isEmpty else {
+            try? FileManager.default.removeItem(at: dest)
+            return .unsupported
+        }
+        if knownMD5s.contains(md5) {
+            try? FileManager.default.removeItem(at: dest)
+            return .duplicate
+        }
+        let asset = AVURLAsset(url: dest)
+        guard let duration = try? await asset.load(.duration),
+              duration.seconds.isFinite, duration.seconds > 0 else {
+            try? FileManager.default.removeItem(at: dest)
+            return .unsupported
+        }
+        let metadata = try? await asset.load(.commonMetadata)
+        let title = metadataValue(.commonIdentifierTitle, in: metadata)
+            ?? url.deletingPathExtension().lastPathComponent
+        let artist = metadataValue(.commonIdentifierArtist, in: metadata) ?? ""
+        let album = metadataValue(.commonIdentifierAlbumName, in: metadata) ?? ""
         let entry = LocalMusicEntry(id: id, fileName: fileName, md5: md5, title: title,
                                     artist: artist, album: album,
                                     durationMS: Int(duration.seconds * 1000), dateAdded: Date())
