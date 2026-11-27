@@ -79,10 +79,12 @@ final class LocalMusicStore: ObservableObject {
     private var indexURL: URL? { directory?.appendingPathComponent("index.json") }
 
     /// The folder the user linked (LX/歌一刀 model): songs are scanned
-    /// from it and played in place, never copied. The access is a
-    /// security-scoped bookmark, persisted so it survives relaunches;
-    /// the scope is held for the whole app run once resolved.
-    private static let folderBookmarkKey = "localMusicLinkedFolderBookmark"
+    /// from it and played in place, never copied. iOS has no
+    /// security-scoped bookmark API (that is macOS-only); instead the
+    /// document picker grant is re-activated by calling
+    /// startAccessingSecurityScopedResource on the stored URL, and the
+    /// scope is held for the whole app run once resolved.
+    private static let folderURLKey = "localMusicLinkedFolderURL"
     private static let folderNameKey = "localMusicLinkedFolderName"
     private var linkedFolderURL: URL?
     @Published private(set) var linkedFolderName: String?
@@ -97,24 +99,23 @@ final class LocalMusicStore: ObservableObject {
     /// Links a folder the user picked in the Files app: the folder is
     /// scanned for audio (LX's readDir, one level, no recursion) and its
     /// songs join the list by path — no copy, no per-file wait. The
-    /// bookmark is persisted, so the folder stays linked across launches.
+    /// folder's URL is persisted, so the link survives relaunches.
     /// Returns how many songs joined, for the toast.
     func linkFolder(_ url: URL) async -> ImportResult {
         var result = ImportResult()
-        let scoped = url.startAccessingSecurityScopedResource()
-        defer { if scoped { url.stopAccessingSecurityScopedResource() } }
-        guard let bookmark = try? url.bookmarkData(options: [.withSecurityScope, .securityScopeAllowOnlyReadAccess],
-                                                   includingResourceValuesForKeys: nil, relativeTo: nil) else {
+        // A new link replaces the old one: its entries leave the list
+        // (the files themselves are never touched).
+        if linkedFolderURL != nil { unlinkFolder() }
+        guard url.startAccessingSecurityScopedResource() else {
             result.unreadable = 1
             result.unreadableReasons = ["文件夹授权失败"]
             return result
         }
-        // A new link replaces the old one: its entries leave the list
-        // (the files themselves are never touched).
-        if linkedFolderURL != nil { unlinkFolder() }
-        UserDefaults.standard.set(bookmark, forKey: Self.folderBookmarkKey)
+        linkedFolderURL = url
+        linkedFolderName = url.lastPathComponent
+        UserDefaults.standard.set(url.absoluteString, forKey: Self.folderURLKey)
         UserDefaults.standard.set(url.lastPathComponent, forKey: Self.folderNameKey)
-        result.imported = resolveLinkedFolder()
+        result.imported = scanLinkedFolder()
         if !entries.isEmpty { saveIndex() }
         return result
     }
@@ -122,43 +123,47 @@ final class LocalMusicStore: ObservableObject {
     /// Drops the folder link. The folder's songs leave the list; the
     /// files themselves are never touched, and copied songs stay.
     func unlinkFolder() {
-        // Balance the single scope held since launch (resolveLinkedFolder
-        // started it once); the bookmark is dropped below, so the folder
-        // is forgotten entirely.
+        // Balance the single scope held since launch (linkFolder or
+        // resolveLinkedFolder started it once).
         linkedFolderURL?.stopAccessingSecurityScopedResource()
         linkedFolderURL = nil
         linkedFolderName = nil
-        UserDefaults.standard.removeObject(forKey: Self.folderBookmarkKey)
+        UserDefaults.standard.removeObject(forKey: Self.folderURLKey)
         UserDefaults.standard.removeObject(forKey: Self.folderNameKey)
         entries.removeAll { $0.relativePath != nil }
         saveIndex()
     }
 
-    /// Resolves the persisted bookmark (if any) and holds its scope for
-    /// the app run, then scans the folder once. A stale bookmark is
-    /// re-created from the resolved URL so the link survives. Returns how
-    /// many songs joined the list in this scan.
+    /// Re-activates the stored folder's picker grant and holds its scope
+    /// for the app run, then scans the folder once. If the folder is gone
+    /// or its grant was revoked, the link and its songs drop out.
+    /// Returns how many songs joined the list in this scan.
     @discardableResult
     private func resolveLinkedFolder() -> Int {
-        guard let data = UserDefaults.standard.data(forKey: Self.folderBookmarkKey) else { return 0 }
-        var stale = false
-        guard let url = try? URL(resolvingBookmarkData: data, options: [.withSecurityScope],
-                                 relativeTo: nil, bookmarkDataIsStale: &stale),
+        guard let urlString = UserDefaults.standard.string(forKey: Self.folderURLKey),
+              let url = URL(string: urlString),
               url.startAccessingSecurityScopedResource() else {
-            UserDefaults.standard.removeObject(forKey: Self.folderBookmarkKey)
-            UserDefaults.standard.removeObject(forKey: Self.folderNameKey)
+            dropLinkedFolderState()
             return 0
         }
         linkedFolderURL = url
         linkedFolderName = UserDefaults.standard.string(forKey: Self.folderNameKey) ?? url.lastPathComponent
-        if stale,
-           let fresh = try? url.bookmarkData(options: [.withSecurityScope, .securityScopeAllowOnlyReadAccess],
-                                             includingResourceValuesForKeys: nil, relativeTo: nil) {
-            UserDefaults.standard.set(fresh, forKey: Self.folderBookmarkKey)
-        }
         let joined = scanLinkedFolder()
         if joined > 0 || entries.contains(where: { $0.relativePath != nil }) { saveIndex() }
         return joined
+    }
+
+    /// Forgets the link and its songs without touching the files. Used
+    /// when the stored folder can no longer be opened.
+    private func dropLinkedFolderState() {
+        linkedFolderURL = nil
+        linkedFolderName = nil
+        UserDefaults.standard.removeObject(forKey: Self.folderURLKey)
+        UserDefaults.standard.removeObject(forKey: Self.folderNameKey)
+        if entries.contains(where: { $0.relativePath != nil }) {
+            entries.removeAll { $0.relativePath != nil }
+            saveIndex()
+        }
     }
 
     /// One-level scan of the linked folder (LX's readDir): audio files
