@@ -1,14 +1,20 @@
 import AVFoundation
-import CryptoKit
 import Foundation
 
 /// One audio file the user imported from their own device, plus the Track the
 /// UI plays. Negative ids never collide with NetEase song ids, which is how
 /// the player tells a local track apart from a streamed one.
+///
+/// Files are stored under their original name (suffixed on collision), and
+/// deduped by name + size — the way other music apps do it. There is no
+/// content hash: hashing a whole file at import time is what stalled the
+/// import (build 6, chen 2026-11-27). `durationMS` is 0 until the
+/// background metadata fill-in reads it; the player falls back to the
+/// item's own length in that case.
 struct LocalMusicEntry: Codable, Hashable, Identifiable {
     var id: Int
     var fileName: String
-    var md5: String
+    var fileSize: Int
     var title: String
     var artist: String
     var album: String
@@ -44,6 +50,10 @@ final class LocalMusicStore: ObservableObject {
 
     @Published private(set) var entries: [LocalMusicEntry] = []
 
+    /// Import progress for the button label: (files done, files picked).
+    /// Nil when no import is running.
+    @Published private(set) var importProgress: (done: Int, total: Int)?
+
     /// Newest first.
     var tracks: [Track] { entries.map(\.track) }
 
@@ -69,15 +79,23 @@ final class LocalMusicStore: ObservableObject {
         return url
     }
 
-    /// Copies the picked files in, reading each one's tags first. A file
-    /// already in the library (same bytes) is skipped, not duplicated.
+    /// Copies the picked files in — and nothing else. Import is only a
+    /// copy, the way other music apps do it: the file lands in the list
+    /// immediately with its filename as the title, and duration + tags are
+    /// filled in afterwards in the background. The old import hashed the
+    /// whole file and probed it with AVAsset before the song appeared, so
+    /// one slow file (a download still coming down from iCloud, a tag
+    /// AVAsset would not read) stalled the whole batch with the button
+    /// stuck on "正在导入…" (build 6, chen 2026-11-27). A copy that stalls
+    /// is abandoned after 30 seconds instead of hanging the import.
     func importFiles(_ urls: [URL]) async -> ImportResult {
         guard let directory else { return ImportResult() }
         var result = ImportResult()
         var nextID = (entries.map(\.id).min() ?? 0) - 1
-        var seenMD5s = Set(entries.map(\.md5))
         var newEntries: [LocalMusicEntry] = []
-        for url in urls {
+        importProgress = (0, urls.count)
+        for (index, url) in urls {
+            importProgress = (index, urls.count)
             let ext = url.pathExtension.lowercased()
             guard Self.supportedExtensions.contains(ext) else {
                 result.unsupported += 1
@@ -87,11 +105,10 @@ final class LocalMusicStore: ObservableObject {
                 }
                 continue
             }
-            switch await Self.prepareImport(from: url, directory: directory, id: nextID,
-                                           knownMD5s: seenMD5s) {
+            switch await Self.copyIn(from: url, directory: directory, id: nextID,
+                                     existing: entries + newEntries) {
             case .ready(let entry):
                 nextID -= 1
-                seenMD5s.insert(entry.md5)
                 newEntries.append(entry)
                 result.imported += 1
             case .duplicate:
@@ -100,9 +117,11 @@ final class LocalMusicStore: ObservableObject {
                 result.unreadable += 1
             }
         }
+        importProgress = nil
         if !newEntries.isEmpty {
             entries = (newEntries + entries).sorted { $0.dateAdded > $1.dateAdded }
             saveIndex()
+            fillMetadata(for: newEntries)
         }
         return result
     }
@@ -122,17 +141,41 @@ final class LocalMusicStore: ObservableObject {
     }
 
     private func loadIndex() {
-        guard let indexURL,
-              let data = try? Data(contentsOf: indexURL),
-              var saved = try? JSONDecoder().decode([LocalMusicEntry].self, from: data) else { return }
-        // A file deleted outside the app (Files, Finder sharing) drops its entry.
-        let before = saved.count
-        saved.removeAll { entry in
-            guard let dir = directory else { return true }
-            return !FileManager.default.fileExists(atPath: dir.appendingPathComponent(entry.fileName).path)
+        guard let directory else { return }
+        var saved: [LocalMusicEntry] = []
+        if let indexURL,
+           let data = try? Data(contentsOf: indexURL),
+           let decoded = try? JSONDecoder().decode([LocalMusicEntry].self, from: data) {
+            saved = decoded
         }
-        entries = saved.sorted { $0.dateAdded > $1.dateAdded }
-        if saved.count != before { saveIndex() }
+        let loadedCount = saved.count
+        // A file deleted outside the app (Files, Finder sharing) drops its entry.
+        saved.removeAll { entry in
+            !FileManager.default.fileExists(atPath: directory.appendingPathComponent(entry.fileName).path)
+        }
+        // The other direction: audio dropped into the folder (Finder, iTunes
+        // file sharing) joins the list on launch, like other music apps'
+        // folder scan. Dropped files keep their real names; unknown files
+        // get their filename as the title and metadata filled in later.
+        let known = Set(saved.map(\.fileName))
+        var adopted: [LocalMusicEntry] = []
+        var nextID = (saved.map(\.id).min() ?? 0) - 1
+        if let names = try? FileManager.default.contentsOfDirectory(atPath: directory.path) {
+            for name in names where Self.supportedExtensions.contains((name as NSString).pathExtension.lowercased()) {
+                guard !known.contains(name) else { continue }
+                let url = directory.appendingPathComponent(name)
+                let attrs = try? FileManager.default.attributesOfItem(atPath: url.path)
+                let size = attrs?[.size] as? Int ?? 0
+                let added = attrs?[.creationDate] as? Date ?? Date()
+                adopted.append(LocalMusicEntry(id: nextID, fileName: name, fileSize: size,
+                                               title: (name as NSString).deletingPathExtension,
+                                               artist: "", album: "", durationMS: 0, dateAdded: added))
+                nextID -= 1
+            }
+        }
+        entries = (saved + adopted).sorted { $0.dateAdded > $1.dateAdded }
+        if !adopted.isEmpty || saved.count != loadedCount { saveIndex() }
+        if !adopted.isEmpty { fillMetadata(for: adopted) }
     }
 
     private func saveIndex() {
@@ -148,65 +191,115 @@ final class LocalMusicStore: ObservableObject {
         case unsupported
     }
 
-    /// Copies the picked file in first, then reads its tags from our own
-    /// copy. The file picker's security scope is held only for the copy
-    /// itself, synchronously, before any await: the old order read the
-    /// source through AVAsset after an await, and AVAsset's reader threads
-    /// run outside the scope the picker granted — so the duration load
-    /// failed and every file came back unsupported (build 5, chen 2026-11-27).
-    /// A copy that turns out to be a duplicate, unreadable or duration-less
-    /// is deleted again, so a failed import leaves nothing behind.
-    private nonisolated static func prepareImport(from url: URL, directory: URL, id: Int,
-                                                  knownMD5s: Set<String>) async -> PreparedImport {
-        let scoped = url.startAccessingSecurityScopedResource()
-        defer { if scoped { url.stopAccessingSecurityScopedResource() } }
-        let fileName = "\(UUID().uuidString).\(url.pathExtension.lowercased())"
-        let dest = directory.appendingPathComponent(fileName)
-        do {
-            try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
-            try FileManager.default.copyItem(at: url, to: dest)
-        } catch {
-            return .unsupported
-        }
-        // From here on the file is ours: no scope needed, whatever thread
-        // the awaits resume on.
-        guard let md5 = md5(of: dest), !md5.isEmpty else {
-            try? FileManager.default.removeItem(at: dest)
-            return .unsupported
-        }
-        if knownMD5s.contains(md5) {
-            try? FileManager.default.removeItem(at: dest)
+    /// Copies one picked file in under its own name. The security scope is
+    /// held only for the copy itself, synchronously, before any await. The
+    /// copy is abandoned after 30 seconds: a file still downloading from
+    /// iCloud must not stall the batch. A same-name, same-size file already
+    /// in the library is a duplicate and is not copied at all.
+    private nonisolated static func copyIn(from url: URL, directory: URL, id: Int,
+                                           existing: [LocalMusicEntry]) async -> PreparedImport {
+        let sourceName = sanitizedFileName(url.lastPathComponent)
+        let sourceSize = (try? FileManager.default.attributesOfItem(atPath: url.path)[.size] as? Int) ?? 0
+        if existing.contains(where: { $0.fileName == sourceName && $0.fileSize == sourceSize }) {
             return .duplicate
         }
-        let asset = AVURLAsset(url: dest)
-        guard let duration = try? await asset.load(.duration),
-              duration.seconds.isFinite, duration.seconds > 0 else {
+        let fileName = uniqueFileName(sourceName, taken: Set(existing.map(\.fileName)))
+        let dest = directory.appendingPathComponent(fileName)
+        let scoped = url.startAccessingSecurityScopedResource()
+        defer { if scoped { url.stopAccessingSecurityScopedResource() } }
+        let copied = await withTimeout(30, fallback: false) {
+            do {
+                try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+                try FileManager.default.copyItem(at: url, to: dest)
+                return true
+            } catch { return false }
+        }
+        guard copied else {
+            // A timed-out copy may still be writing in the background;
+            // removing the destination keeps a half-copied file out of the
+            // library (the write lands in an unlinked inode and frees).
             try? FileManager.default.removeItem(at: dest)
             return .unsupported
         }
-        let metadata = try? await asset.load(.commonMetadata)
-        let title = metadataValue(.commonIdentifierTitle, in: metadata)
-            ?? url.deletingPathExtension().lastPathComponent
-        let artist = metadataValue(.commonIdentifierArtist, in: metadata) ?? ""
-        let album = metadataValue(.commonIdentifierAlbumName, in: metadata) ?? ""
-        let entry = LocalMusicEntry(id: id, fileName: fileName, md5: md5, title: title,
-                                    artist: artist, album: album,
-                                    durationMS: Int(duration.seconds * 1000), dateAdded: Date())
+        let size = (try? FileManager.default.attributesOfItem(atPath: dest.path)[.size] as? Int) ?? sourceSize
+        let entry = LocalMusicEntry(id: id, fileName: fileName, fileSize: size,
+                                    title: url.deletingPathExtension().lastPathComponent,
+                                    artist: "", album: "", durationMS: 0, dateAdded: Date())
         return .ready(entry)
     }
 
-    private nonisolated static func md5(of url: URL) -> String? {
-        guard let handle = try? FileHandle(forReadingFrom: url) else { return nil }
-        defer { try? handle.close() }
-        var hash = Insecure.MD5()
-        do {
-            while let chunk = try handle.read(upToCount: 1 << 16), !chunk.isEmpty {
-                hash.update(data: chunk)
-            }
-        } catch {
-            return nil
+    private nonisolated static func sanitizedFileName(_ name: String) -> String {
+        let cleaned = name.replacingOccurrences(of: "/", with: "_")
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        return cleaned.isEmpty ? "未命名音频" : cleaned
+    }
+
+    private nonisolated static func uniqueFileName(_ name: String, taken: Set<String>) -> String {
+        guard taken.contains(name) else { return name }
+        let base = (name as NSString).deletingPathExtension
+        let ext = (name as NSString).pathExtension
+        var n = 2
+        while true {
+            let candidate = ext.isEmpty ? "\(base) (\(n))" : "\(base) (\(n)).\(ext)"
+            if !taken.contains(candidate) { return candidate }
+            n += 1
         }
-        return hash.finalize().map { String(format: "%02x", $0) }.joined()
+    }
+
+    /// Runs work with a time limit; on timeout the work is cancelled and
+    /// the fallback is returned. The cancelled work may still finish in the
+    /// background; callers must not depend on its result afterwards.
+    private nonisolated static func withTimeout<T>(_ seconds: UInt64, fallback: T,
+                                                   work: @escaping @Sendable () async -> T) async -> T {
+        await withTaskGroup(of: T.self) { group in
+            group.addTask { await work() }
+            group.addTask {
+                try? await Task.sleep(nanoseconds: seconds * 1_000_000_000)
+                return fallback
+            }
+            let first = await group.next()!
+            group.cancelAll()
+            return first
+        }
+    }
+
+    /// Reads duration + tags for freshly imported songs, one at a time, in
+    /// the background. Best-effort: a file whose tags cannot be read keeps
+    /// its filename as the title, and import never waits for this. Each
+    /// file gets 10 seconds; a stalled read is skipped, not retried.
+    private func fillMetadata(for fresh: [LocalMusicEntry]) {
+        guard let directory else { return }
+        Task { [entries = fresh, directory] in
+            for entry in entries {
+                if Task.isCancelled { return }
+                let url = directory.appendingPathComponent(entry.fileName)
+                guard let meta = await Self.readMetadata(of: url) else { continue }
+                applyMetadata(id: entry.id, title: meta.title, artist: meta.artist,
+                              album: meta.album, durationMS: meta.durationMS)
+            }
+        }
+    }
+
+    private func applyMetadata(id: Int, title: String?, artist: String?, album: String?, durationMS: Int?) {
+        guard let i = entries.firstIndex(where: { $0.id == id }) else { return }
+        if let title, !title.isEmpty { entries[i].title = title }
+        if let artist, !artist.isEmpty { entries[i].artist = artist }
+        if let album, !album.isEmpty { entries[i].album = album }
+        if let durationMS, durationMS > 0 { entries[i].durationMS = durationMS }
+        saveIndex()
+    }
+
+    private nonisolated static func readMetadata(of url: URL) async -> (title: String?, artist: String?, album: String?, durationMS: Int?)? {
+        await withTimeout(10, fallback: nil) {
+            let asset = AVURLAsset(url: url)
+            guard let duration = try? await asset.load(.duration),
+                  duration.seconds.isFinite, duration.seconds > 0 else { return nil }
+            let metadata = try? await asset.load(.commonMetadata)
+            return (metadataValue(.commonIdentifierTitle, in: metadata),
+                    metadataValue(.commonIdentifierArtist, in: metadata),
+                    metadataValue(.commonIdentifierAlbumName, in: metadata),
+                    Int(duration.seconds * 1000))
+        }
     }
 
     private nonisolated static func metadataValue(_ identifier: AVMetadataIdentifier,

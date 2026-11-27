@@ -766,8 +766,11 @@ final class PlayerService: ObservableObject {
         // network, no quality ladder. A corrupt or unreadable file fails
         // through the item observer, like any other unplayable song.
         if !skipsLocalCopies, let localURL = LocalMusicStore.shared.fileURL(for: track.id) {
+            // Duration may still be 0 while the background metadata fill-in
+            // has not read it yet; installResolvedAsset falls back to the
+            // item's own length when durationMS is nil.
             _ = await installResolvedAsset(AVURLAsset(url: localURL), for: track, generation: generation,
-                                           durationMS: track.durationMS, resumeAt: resumeAt)
+                                           durationMS: track.durationMS > 0 ? track.durationMS : nil, resumeAt: resumeAt)
             return
         }
 

@@ -100,7 +100,11 @@ struct LocalMusicView: View {
         Button { showImporter = true } label: {
             HStack(spacing: 6) {
                 Image(systemName: "square.and.arrow.down")
-                Text(isImporting ? "正在导入…" : "导入")
+                if let progress = store.importProgress {
+                    Text("正在导入 \(progress.done + 1)/\(progress.total)…")
+                } else {
+                    Text(isImporting ? "正在导入…" : "导入")
+                }
             }
             .font(.system(size: 12.5, weight: .medium))
             .lineLimit(1)
