@@ -8,6 +8,13 @@ private struct NewAlbumsWidthKey: PreferenceKey {
     static func reduce(value: inout CGFloat, nextValue: () -> CGFloat) { value = nextValue() }
 }
 
+/// Measured width of a song-pair shelf （地区热门 / 喜欢的歌手推荐）,
+/// reported the same way so each two-song column can size itself.
+private struct SongShelfWidthKey: PreferenceKey {
+    static var defaultValue: CGFloat = 0
+    static func reduce(value: inout CGFloat, nextValue: () -> CGFloat) { value = nextValue() }
+}
+
 @MainActor
 final class HomeViewModel: ObservableObject {
     /// Shared so the loaded page survives sidebar switches (no skeleton flash).
@@ -235,6 +242,9 @@ struct HomeView: View {
     /// the fitted card size (see loadedBody). Falls back to the screen
     /// width until the first measurement lands.
     @State private var newAlbumsWidth: CGFloat = 0
+    /// Measured width of the song-pair shelves, for sizing each two-song
+    /// column (see songPairShelf). Same fallback.
+    @State private var songShelfWidth: CGFloat = 0
 
     var body: some View {
         ScrollView {
@@ -553,6 +563,34 @@ struct HomeView: View {
 
     // MARK: - 地区热门 / 喜欢的歌手推荐
 
+    /// Two songs per column, columns scrolling horizontally — the same shape
+    /// as 新碟上架 (two album cards per column). Each column is one
+    /// TrackListView of two tracks, so rows keep their play, download and
+    /// menu behaviour. A column is most of the content width with the next
+    /// one peeking in, so the shelf reads as swipeable.
+    private func songPairShelf(tracks: [Track]) -> some View {
+        let pairs = stride(from: 0, to: tracks.count, by: 2)
+            .map { Array(tracks[$0..<min($0 + 2, tracks.count)]) }
+        let width = songShelfWidth > 0 ? songShelfWidth : UIScreen.main.bounds.width
+        let columnWidth = max(240, (width - Theme.Layout.contentInset * 2) * 0.86)
+        return ScrollView(.horizontal, showsIndicators: false) {
+            LazyHStack(alignment: .top, spacing: 16) {
+                ForEach(pairs.indices, id: \.self) { index in
+                    TrackListView(tracks: pairs[index], style: .compact, source: .none)
+                        .frame(width: columnWidth)
+                }
+            }
+            .padding(.horizontal, Theme.Layout.contentInset)
+        }
+        .shelfEdgeClip()
+        .background(
+            GeometryReader { proxy in
+                Color.clear.preference(key: SongShelfWidthKey.self, value: proxy.size.width)
+            }
+        )
+        .onPreferenceChange(SongShelfWidthKey.self) { songShelfWidth = $0 }
+    }
+
     private var regionalSection: some View {
         VStack(alignment: .leading, spacing: Theme.Layout.sectionHeaderSpacing) {
             SectionHeader(title: "地区热门")
@@ -581,8 +619,7 @@ struct HomeView: View {
                 }
                 .padding(.vertical, 20)
             } else if !model.regionalSongs.isEmpty {
-                TrackListView(tracks: Array(model.regionalSongs.prefix(10)), style: .compact, source: .none)
-                    .padding(.horizontal, Theme.Layout.contentInset - 10)
+                songPairShelf(tracks: Array(model.regionalSongs.prefix(10)))
             }
         }
         .task(id: "\(model.refreshNonce)-\(model.regionalArea.rawValue)") {
@@ -602,8 +639,7 @@ struct HomeView: View {
                 }
                 .padding(.vertical, 20)
             } else if !model.likedArtistSongs.isEmpty {
-                TrackListView(tracks: Array(model.likedArtistSongs.prefix(10)), style: .compact, source: .none)
-                    .padding(.horizontal, Theme.Layout.contentInset - 10)
+                songPairShelf(tracks: Array(model.likedArtistSongs.prefix(10)))
             }
         }
         .task(id: "\(model.refreshNonce)-\(account.likedArtists.map(\.id))") {
