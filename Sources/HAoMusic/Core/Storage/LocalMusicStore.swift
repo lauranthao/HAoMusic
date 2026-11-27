@@ -199,14 +199,31 @@ final class LocalMusicStore: ObservableObject {
     private nonisolated static func copyIn(from url: URL, directory: URL, id: Int,
                                            existing: [LocalMusicEntry]) async -> PreparedImport {
         let sourceName = sanitizedFileName(url.lastPathComponent)
+        let scoped = url.startAccessingSecurityScopedResource()
+        defer { if scoped { url.stopAccessingSecurityScopedResource() } }
+        // Size inside the scope: outside it the read fails and the size
+        // is 0, which breaks the name+size dedup.
         let sourceSize = (try? FileManager.default.attributesOfItem(atPath: url.path)[.size] as? Int) ?? 0
         if existing.contains(where: { $0.fileName == sourceName && $0.fileSize == sourceSize }) {
             return .duplicate
         }
         let fileName = uniqueFileName(sourceName, taken: Set(existing.map(\.fileName)))
         let dest = directory.appendingPathComponent(fileName)
-        let scoped = url.startAccessingSecurityScopedResource()
-        defer { if scoped { url.stopAccessingSecurityScopedResource() } }
+        // A file picked from iCloud Drive (or another cloud folder) may
+        // not be downloaded yet; a plain copy then fails at once, and a
+        // big FLAC is exactly the file that is usually still in the
+        // cloud. Ask the system to fetch it and wait for the download
+        // (90s cap) before copying.
+        if FileManager.default.isUbiquitousItem(at: url) {
+            try? FileManager.default.startDownloadingUbiquitousItem(at: url)
+            let deadline = Date().addingTimeInterval(90)
+            while Date() < deadline {
+                let status = try? url.resourceValues(forKeys: [.ubiquitousItemDownloadingStatusKey])
+                    .ubiquitousItemDownloadingStatus
+                if status == .current || status == .downloaded || status == nil { break }
+                try? await Task.sleep(nanoseconds: 500_000_000)
+            }
+        }
         let copied = await withTimeout(30, fallback: false) {
             do {
                 try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)

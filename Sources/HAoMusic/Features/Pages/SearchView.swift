@@ -89,7 +89,7 @@ final class SearchViewModel: ObservableObject {
     /// at 5 seconds so a slow QQ never delays the NetEase results.
     /// Either source failing alone still shows the other's results; nil
     /// only when both fail, so the tab retries.
-    private static func mergedSongs(for query: String, limit: Int) async -> [Track]? {
+    private func mergedSongs(for query: String, limit: Int) async -> [Track]? {
         async let neteaseTask = try? MusicAPI.search(query, type: .songs, limit: limit)
         async let qqTask = qqSongs(for: query, limit: limit)
         let (neteaseResult, qqTracks) = await (neteaseTask, qqTask)
@@ -104,7 +104,7 @@ final class SearchViewModel: ObservableObject {
         }
     }
 
-    private static func qqSongs(for query: String, limit: Int) async -> [Track] {
+    private func qqSongs(for query: String, limit: Int) async -> [Track] {
         await withTaskGroup(of: [Track].self) { group in
             group.addTask {
                 guard let songs = try? await QQMusicAPI.shared.searchSongs(keyword: query, limit: limit) else { return [] }
