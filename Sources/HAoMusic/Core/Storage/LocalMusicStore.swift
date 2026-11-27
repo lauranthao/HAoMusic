@@ -47,13 +47,14 @@ final class LocalMusicStore: ObservableObject {
     }
 
     /// Every audio format the iPhone itself can decode (AVFoundation):
-    /// MP3, AAC/M4A/M4B/MP4, FLAC, WAV, AIFF and CAF. Anything outside
-    /// this (APE, OGG Vorbis, Opus in its own .opus container, WMA, DSD,
-    /// ...) has no iOS decoder and cannot play even if imported, so it
-    /// stays rejected with its extension named in the toast.
+    /// MP3, AAC/M4A/M4B/MP4, FLAC, WAV, AIFF, CAF and AMR. Anything
+    /// outside this (APE, OGG Vorbis, Opus in its own .opus container,
+    /// WMA, DSD, ...) has no iOS decoder and cannot play even if
+    /// imported, so it stays rejected with its extension named in the
+    /// toast.
     static let supportedExtensions: Set<String> = [
         "mp3", "m4a", "aac", "m4b", "mp4",
-        "flac", "wav", "aiff", "aif", "aifc", "caf",
+        "flac", "wav", "aiff", "aif", "aifc", "caf", "amr",
     ]
 
     @Published private(set) var entries: [LocalMusicEntry] = []
