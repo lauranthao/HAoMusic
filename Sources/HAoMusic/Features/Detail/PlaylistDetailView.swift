@@ -59,6 +59,7 @@ struct PlaylistDetailView: View {
 
     var body: some View {
         onlineContent
+            .detailArtworkBackground(model.detail?.coverImgUrl)
             .task(id: "\(playlistID):\(account.offlineScope ?? ""):\(downloads.network.isKnown):\(downloads.network.connected)") {
                 await loadPlaylist()
             }
@@ -117,7 +118,6 @@ struct PlaylistDetailView: View {
         .navigationBarTitleDisplayMode(.inline)
         .scrollDismissesKeyboard(.interactively)
         #endif
-        .detailArtworkBackground(model.detail?.coverImgUrl)
     }
 
     #if os(macOS)
