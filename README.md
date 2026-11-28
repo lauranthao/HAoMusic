@@ -6,15 +6,21 @@
 ![Version](https://img.shields.io/badge/version-0.1.3-red)
 ![License](https://img.shields.io/badge/license-AGPL--3.0-blue)
 
+## 截图
+
+| 首页 | 播放器 | 我的 | 喜欢的音乐 | 每日推荐 |
+|---|---|---|---|---|
+| <img src="docs/screenshots/home.jpg" width="180"> | <img src="docs/screenshots/player.jpg" width="180"> | <img src="docs/screenshots/profile.jpg" width="180"> | <img src="docs/screenshots/liked.jpg" width="180"> | <img src="docs/screenshots/daily.jpg" width="180"> |
+
 ## 功能
 
 - **多源听歌**：网易云音乐、QQ 音乐、酷狗音乐、酷我音乐，搜歌、播歌、看歌单、看排行。
+- **合并搜索**：网易与 QQ 并行搜，结果去重，网易优先。
 - **高音质**：多档音质可选，播不了自动往下降，只报实测档位，不谎报。
 - **灰歌能播**：灰歌、VIP 歌自动匹配可播音源，多源并行找，最快的先出声。
 - **歌词**：点封面看歌词，点歌词行跳转。
 - **歌单与收藏**：创建歌单、收藏专辑与歌手、每日推荐、最近播放、我喜欢的音乐。
 - **下载**：整张专辑、整个歌单、单曲都能离线下载。
-- **本地音乐**：从文件 App 导入自己的 MP3、FLAC 等音频文件，不用登录、不用联网就能听。
 - **电台**：FM 漫游，随便听听。
 - **登录**：网易云、QQ 扫码登录，会话存钥匙串；登录后高档位按账号给。
 - **均衡器、睡眠定时**：都在播放器里。
@@ -25,6 +31,16 @@
 从 [Releases](https://github.com/lauranthao/HAoMusic/releases) 下载最新版 `HAoMusic.ipa`，用 TrollStore 或 LCSign 安装。
 
 要求：iOS 16.0+。
+
+## 更新日志
+
+- **0.1.3 build 16（2026-11-27）**：下载改走播放地址（QQ 直链 → 网易音质 → 标准 → 解锁竞速，第一个完整地址获胜）；在线更新改按版本与构建号比较。
+- **0.1.3 build 15（2026-11-27）**：首页各区块按统一标准对齐。
+- **0.1.3 build 14（2026-11-27）**：本地音乐整个删除。
+- **0.1.3 build 10（2026-11-27）**：动态封面主题、排行榜、热门歌单。
+- 更早的版本见 git 历史。
+
+当前版本：**0.1.3 build 16**。
 
 ## 免责声明
 
